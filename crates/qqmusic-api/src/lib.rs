@@ -9,6 +9,9 @@ pub mod credential;
 pub mod device;
 pub mod error;
 pub mod json;
+pub mod models;
+pub mod modules;
+pub mod pagination;
 pub mod qimei;
 pub mod ratelimit;
 pub mod request;
@@ -18,11 +21,15 @@ pub mod transport;
 pub mod utils;
 pub mod versioning;
 
+#[cfg(test)]
+pub(crate) mod testing;
+
 pub use bypass::BypassConfig;
 pub use client::{Client, ClientBuilder, DeviceSource, Endpoints, QimeiMode};
 pub use credential::Credential;
 pub use device::{Device, DeviceProfile};
 pub use error::{ApiError, ApiErrorKind, Error, Result};
 pub use json::FromJson;
+pub use pagination::Paged;
 pub use request::{CgiRequest, HttpRequest};
 pub use versioning::{Platform, VersionPolicy, VersionProfile};
