@@ -93,6 +93,7 @@ pub mod album;
 pub mod comment;
 pub mod lyric;
 pub mod mv;
+pub mod recommend;
 pub mod search;
 pub mod singer;
 pub mod song;
@@ -118,6 +119,11 @@ impl Client {
     /// MV APIs.
     pub fn mv(&self) -> mv::MvApi {
         mv::MvApi::new(self)
+    }
+
+    /// Recommendation APIs.
+    pub fn recommend(&self) -> recommend::RecommendApi {
+        recommend::RecommendApi::new(self)
     }
 
     /// Search APIs.

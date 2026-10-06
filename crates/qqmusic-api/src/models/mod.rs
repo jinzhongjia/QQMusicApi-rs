@@ -5,6 +5,7 @@ pub mod base;
 pub mod comment;
 pub mod lyric;
 pub mod mv;
+pub mod recommend;
 pub mod search;
 pub mod singer;
 pub mod song;
