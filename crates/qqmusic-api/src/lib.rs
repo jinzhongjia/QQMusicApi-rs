@@ -83,6 +83,11 @@ pub mod versioning;
 #[cfg(test)]
 pub(crate) mod testing;
 
+/// Compile the README examples as doctests.
+#[cfg(doctest)]
+#[doc = include_str!("../../../README.md")]
+pub struct ReadmeDoctests;
+
 pub use bypass::BypassConfig;
 pub use client::{Client, ClientBuilder, DeviceSource, Endpoints, QimeiMode};
 pub use credential::Credential;
