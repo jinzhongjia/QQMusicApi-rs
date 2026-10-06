@@ -6,6 +6,7 @@ pub mod comment;
 pub mod login;
 pub mod lyric;
 pub mod mv;
+pub mod private_message;
 pub mod recommend;
 pub mod search;
 pub mod singer;

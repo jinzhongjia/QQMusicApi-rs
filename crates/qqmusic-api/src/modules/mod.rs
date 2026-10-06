@@ -94,6 +94,7 @@ pub mod comment;
 pub mod login;
 pub mod lyric;
 pub mod mv;
+pub mod private_message;
 pub mod recommend;
 pub mod search;
 pub mod singer;
@@ -127,6 +128,11 @@ impl Client {
     /// MV APIs.
     pub fn mv(&self) -> mv::MvApi {
         mv::MvApi::new(self)
+    }
+
+    /// Private message APIs.
+    pub fn private_message(&self) -> private_message::PrivateMessageApi {
+        private_message::PrivateMessageApi::new(self)
     }
 
     /// Recommendation APIs.
