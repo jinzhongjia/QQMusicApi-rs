@@ -6,5 +6,6 @@ pub mod lyric;
 pub mod search;
 pub mod singer;
 pub mod song;
+pub mod songlist;
 
 pub use base::{Album, CoverSize, File, Mv, Pay, Singer, Song, SongList};

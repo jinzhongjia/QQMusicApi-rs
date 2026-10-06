@@ -94,6 +94,7 @@ pub mod lyric;
 pub mod search;
 pub mod singer;
 pub mod song;
+pub mod songlist;
 
 impl Client {
     /// Album APIs.
@@ -119,5 +120,10 @@ impl Client {
     /// Song APIs.
     pub fn song(&self) -> song::SongApi {
         song::SongApi::new(self)
+    }
+
+    /// Playlist APIs.
+    pub fn songlist(&self) -> songlist::SonglistApi {
+        songlist::SonglistApi::new(self)
     }
 }
