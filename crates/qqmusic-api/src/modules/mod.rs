@@ -100,6 +100,7 @@ pub mod song;
 pub mod songlist;
 pub mod sound_power;
 pub mod top;
+pub mod user;
 
 impl Client {
     /// Album APIs.
@@ -155,5 +156,10 @@ impl Client {
     /// Top list APIs.
     pub fn top(&self) -> top::TopApi {
         top::TopApi::new(self)
+    }
+
+    /// User APIs.
+    pub fn user(&self) -> user::UserApi {
+        user::UserApi::new(self)
     }
 }

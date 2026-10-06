@@ -12,5 +12,6 @@ pub mod song;
 pub mod songlist;
 pub mod sound_power;
 pub mod top;
+pub mod user;
 
 pub use base::{Album, CoverSize, File, Mv, Pay, Singer, Song, SongList};
