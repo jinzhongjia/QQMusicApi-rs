@@ -98,6 +98,7 @@ pub mod search;
 pub mod singer;
 pub mod song;
 pub mod songlist;
+pub mod sound_power;
 pub mod top;
 
 impl Client {
@@ -144,6 +145,11 @@ impl Client {
     /// Playlist APIs.
     pub fn songlist(&self) -> songlist::SonglistApi {
         songlist::SonglistApi::new(self)
+    }
+
+    /// Sound power APIs.
+    pub fn sound_power(&self) -> sound_power::SoundPowerApi {
+        sound_power::SoundPowerApi::new(self)
     }
 
     /// Top list APIs.
