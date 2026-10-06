@@ -85,9 +85,12 @@ impl RawPayload {
     }
 }
 
-/// Fail on non-2xx responses.
+/// Fail on error responses.
+///
+/// Like `requests`' `raise_for_status`, only `4xx`/`5xx` are errors so that
+/// redirect responses (`allow_redirects=False`) can be inspected.
 pub fn ensure_http_success(response: &Response) -> Result<()> {
-    if response.is_success() {
+    if response.status < 400 {
         Ok(())
     } else {
         Err(Error::Http {
@@ -268,5 +271,16 @@ mod tests {
         assert_eq!(payload.text(), r#"{"a":1}"#);
         assert_eq!(payload.header("SET-COOKIE"), Some("k=v; Path=/"));
         assert!(ensure_http_success(&Response::new(403, "")).is_err());
+    }
+
+    #[test]
+    fn http_status_semantics() {
+        assert!(ensure_http_success(&Response::new(200, "")).is_ok());
+        assert!(ensure_http_success(&Response::new(302, "")).is_ok());
+        assert!(matches!(
+            ensure_http_success(&Response::new(404, "")),
+            Err(Error::Http { status: 404, .. })
+        ));
+        assert!(ensure_http_success(&Response::new(503, "")).is_err());
     }
 }
