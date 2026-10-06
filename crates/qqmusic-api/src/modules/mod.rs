@@ -91,10 +91,12 @@ macro_rules! api_module {
 }
 pub mod album;
 pub mod lyric;
+pub mod mv;
 pub mod search;
 pub mod singer;
 pub mod song;
 pub mod songlist;
+pub mod top;
 
 impl Client {
     /// Album APIs.
@@ -105,6 +107,11 @@ impl Client {
     /// Lyric APIs.
     pub fn lyric(&self) -> lyric::LyricApi {
         lyric::LyricApi::new(self)
+    }
+
+    /// MV APIs.
+    pub fn mv(&self) -> mv::MvApi {
+        mv::MvApi::new(self)
     }
 
     /// Search APIs.
@@ -125,5 +132,10 @@ impl Client {
     /// Playlist APIs.
     pub fn songlist(&self) -> songlist::SonglistApi {
         songlist::SonglistApi::new(self)
+    }
+
+    /// Top list APIs.
+    pub fn top(&self) -> top::TopApi {
+        top::TopApi::new(self)
     }
 }
