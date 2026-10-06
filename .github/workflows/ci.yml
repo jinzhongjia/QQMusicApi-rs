@@ -48,7 +48,10 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
-      - run: cargo test --workspace --all-features
+      - name: default features (graviola TLS)
+        run: cargo test --workspace
+      - name: all features (aws-lc-rs TLS)
+        run: cargo test --workspace --all-features
 
   features:
     name: feature combinations
@@ -59,19 +62,41 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: no default features
         run: cargo test -p qqmusic-api --no-default-features --lib --tests
-      - name: reqwest transport only
-        run: cargo check -p qqmusic-api --no-default-features --features reqwest-transport --all-targets
-      - name: mobile login only
-        run: cargo check -p qqmusic-api --no-default-features --features mobile-login --all-targets
-      - name: socks
-        run: cargo check -p qqmusic-api --features socks
+      - name: reqwest transport without a crypto provider
+        run: cargo test -p qqmusic-api --no-default-features --features reqwest-transport --lib --tests
+      - name: mobile login with ring
+        run: cargo test -p qqmusic-api --no-default-features --features mobile-login,tls-ring --lib --tests
+      - name: socks + native roots
+        run: cargo check -p qqmusic-api --features socks,native-roots --all-targets
 
-  msrv:
-    name: MSRV (1.88)
+  pure-rust:
+    name: no C toolchain (default features)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - uses: dtolnay/rust-toolchain@1.88
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl,aarch64-unknown-linux-musl
+      - name: dependency tree has no C build dependencies
+        run: |
+          if cargo tree -p qqmusic-api -e normal,build --target all --prefix none | grep -E '^(cc|cmake|aws-lc-sys|ring|openssl-sys|bindgen) '; then
+            echo "default features pull in a C build dependency" >&2
+            exit 1
+          fi
+      - name: build with the C compiler disabled
+        env:
+          CC: "false"
+          CXX: "false"
+        run: |
+          cargo build -p qqmusic-api --target x86_64-unknown-linux-musl
+          cargo build -p qqmusic-api --target aarch64-unknown-linux-musl
+
+  msrv:
+    name: MSRV (1.89)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: dtolnay/rust-toolchain@1.89
       - uses: Swatinem/rust-cache@v2
       - run: cargo check --workspace --all-features --all-targets
 
