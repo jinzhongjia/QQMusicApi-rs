@@ -5,7 +5,6 @@ use std::borrow::Cow;
 use serde::Serialize;
 use serde_json::{Value, json};
 
-use crate::client::Client;
 use crate::credential::Credential;
 use crate::error::{Error, Result};
 use crate::models::song::{
@@ -15,7 +14,7 @@ use crate::models::song::{
     QuerySongResponse,
 };
 use crate::pagination::{CursorStrategy, Paged};
-use crate::request::{CgiRequest, CgiSpec};
+use crate::request::CgiRequest;
 use crate::utils::get_guid;
 use crate::versioning::Platform;
 
@@ -233,53 +232,7 @@ impl From<String> for SongFileInfo {
 }
 
 /// Song id or mid.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum SongRef {
-    /// Numeric id.
-    Id(i64),
-    /// Mid.
-    Mid(String),
-}
-
-impl From<i64> for SongRef {
-    fn from(id: i64) -> Self {
-        Self::Id(id)
-    }
-}
-
-impl From<&str> for SongRef {
-    /// Decimal strings are treated as ids (like upstream).
-    fn from(value: &str) -> Self {
-        if !value.is_empty()
-            && value.bytes().all(|b| b.is_ascii_digit())
-            && let Ok(id) = value.parse()
-        {
-            return Self::Id(id);
-        }
-        Self::Mid(value.to_string())
-    }
-}
-
-impl From<String> for SongRef {
-    fn from(value: String) -> Self {
-        Self::from(value.as_str())
-    }
-}
-
-impl From<&String> for SongRef {
-    fn from(value: &String) -> Self {
-        Self::from(value.as_str())
-    }
-}
-
-impl SongRef {
-    fn param(&self, id_key: &str, mid_key: &str) -> Value {
-        match self {
-            Self::Id(id) => json!({ id_key: id }),
-            Self::Mid(mid) => json!({ mid_key: mid }),
-        }
-    }
-}
+pub type SongRef = super::IdOrMid;
 
 /// Song for `query_song`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -385,21 +338,12 @@ pub struct PlayableUrl {
     pub filename: String,
 }
 
-/// Song APIs.
-#[derive(Debug, Clone)]
-pub struct SongApi {
-    client: Client,
+api_module! {
+    /// Song APIs.
+    SongApi
 }
 
 impl SongApi {
-    pub(crate) fn new(client: &Client) -> Self {
-        Self { client: client.clone() }
-    }
-
-    fn cgi<T: crate::FromJson + Send + 'static>(&self, module: &str, method: &str, param: Value) -> CgiRequest<T> {
-        CgiRequest::new(&self.client, CgiSpec::new(module, method, param))
-    }
-
     /// Query songs by id or mid (`CgiGetTrackInfo`).
     pub fn query_song<I, Q>(&self, songs: I) -> Result<CgiRequest<QuerySongResponse>>
     where

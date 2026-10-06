@@ -2,13 +2,12 @@
 
 use serde_json::{Map, Value, json};
 
-use crate::client::Client;
 use crate::models::search::{
     CompleteResponse, GeneralSearchResponse, HotkeyResponse, QuickSearchResponse, SearchByTypeResponse,
     SearchSelector,
 };
 use crate::pagination::{FnStrategy, PageStrategy, Paged};
-use crate::request::{CgiRequest, CgiSpec, HttpRequest, HttpSpec};
+use crate::request::{CgiRequest, HttpRequest, HttpSpec};
 use crate::transport::Method;
 use crate::utils::get_search_id;
 use crate::versioning::Platform;
@@ -94,21 +93,12 @@ impl Default for SearchOptions {
     }
 }
 
-/// Search APIs.
-#[derive(Debug, Clone)]
-pub struct SearchApi {
-    client: Client,
+api_module! {
+    /// Search APIs.
+    SearchApi
 }
 
 impl SearchApi {
-    pub(crate) fn new(client: &Client) -> Self {
-        Self { client: client.clone() }
-    }
-
-    fn cgi<T: crate::FromJson + Send + 'static>(&self, module: &str, method: &str, param: Value) -> CgiRequest<T> {
-        CgiRequest::new(&self.client, CgiSpec::new(module, method, param))
-    }
-
     /// Hot keywords.
     pub fn get_hotkey(&self) -> CgiRequest<HotkeyResponse> {
         self.cgi(
