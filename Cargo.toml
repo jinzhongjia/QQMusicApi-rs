@@ -1,0 +1,20 @@
+[workspace]
+resolver = "3"
+members = ["crates/qqmusic-api", "crates/qqmusic-api-derive"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.88"
+license = "GPL-3.0-only"
+repository = "https://github.com/jinzhongjia/QQMusicApi-rs"
+authors = ["jinzhongjia <mail@nvimer.org>"]
+
+[workspace.dependencies]
+qqmusic-api-derive = { path = "crates/qqmusic-api-derive", version = "0.1.0" }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+all = { level = "warn", priority = -1 }

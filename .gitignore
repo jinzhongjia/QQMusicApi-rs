@@ -1,0 +1,4 @@
+/target
+/.work
+*.cache.json
+.DS_Store
