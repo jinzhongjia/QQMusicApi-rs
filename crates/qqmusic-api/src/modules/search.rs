@@ -62,7 +62,7 @@ impl SearchType {
     }
 }
 
-/// Options of [`SearchApi::by_type_with`].
+/// Options of [`SearchApi::search_by_type_with`].
 #[derive(Debug, Clone, PartialEq)]
 pub struct SearchOptions {
     /// Search type.
@@ -157,12 +157,12 @@ impl SearchApi {
     }
 
     /// Typed search (songs by default).
-    pub fn by_type(&self, keyword: &str, search_type: SearchType) -> Paged<SearchByTypeResponse> {
-        self.by_type_with(keyword, SearchOptions { search_type, ..SearchOptions::default() })
+    pub fn search_by_type(&self, keyword: &str, search_type: SearchType) -> Paged<SearchByTypeResponse> {
+        self.search_by_type_with(keyword, SearchOptions { search_type, ..SearchOptions::default() })
     }
 
     /// Typed search with options.
-    pub fn by_type_with(&self, keyword: &str, options: SearchOptions) -> Paged<SearchByTypeResponse> {
+    pub fn search_by_type_with(&self, keyword: &str, options: SearchOptions) -> Paged<SearchByTypeResponse> {
         let selectors: Map<String, Value> =
             options.selectors.iter().map(|s| (s.r#type.to_string(), Value::String(s.id.to_string()))).collect();
         let vec_selectors: Vec<Value> =
@@ -222,7 +222,7 @@ mod tests {
         push_cgi(&mock, json!({"meta": {"nextpage": -1, "sum": 3}, "body": {"item_song": [{"id": 3, "mid": "c"}]}}));
         let items = client
             .search()
-            .by_type_with(
+            .search_by_type_with(
                 "jay",
                 SearchOptions {
                     num: 2,
@@ -244,7 +244,7 @@ mod tests {
         assert_eq!(mock.request_count(), 2);
 
         push_cgi(&mock, json!({"meta": {"nextpage": 2}, "body": {"singer": [{"singerMID": "x"}]}}));
-        let page = client.search().by_type("jay", SearchType::Singer).await.unwrap();
+        let page = client.search().search_by_type("jay", SearchType::Singer).await.unwrap();
         assert_eq!(page.into_items().len(), 1);
         assert_eq!(last_req0(&mock)["param"]["search_type"], 1);
     }
