@@ -34,7 +34,7 @@ pub const DEFAULT_CDN: &str = "https://isure.stream.qqmusic.qq.com/";
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CtStrategy {
-    /// Stable value derived from the device GUID (sha256(guid)[0] % len).
+    /// Stable value derived from the device GUID (`sha256(guid)[0] % len`).
     DerivedFromGuid(Vec<i64>),
     /// Always use the given value.
     Fixed(i64),

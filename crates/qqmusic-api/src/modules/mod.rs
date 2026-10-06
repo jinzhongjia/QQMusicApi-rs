@@ -1,4 +1,4 @@
-//! API modules, accessed through [`Client`](crate::Client) methods.
+//! API modules, accessed through [`Client`] methods.
 
 use serde_json::{Value, json};
 

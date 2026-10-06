@@ -2,7 +2,7 @@
 //!
 //! The client never talks to the network directly; it goes through a
 //! [`Transport`]. The default implementation is
-//! [`ReqwestTransport`](crate::transport::ReqwestTransport) (feature
+//! `ReqwestTransport` (feature
 //! `reqwest-transport`), and [`mock::MockTransport`] is provided for tests.
 //! Custom transports can be plugged in to control TLS fingerprints, routing
 //! or proxies for risk-control bypass.
