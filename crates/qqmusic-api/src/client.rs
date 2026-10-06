@@ -414,6 +414,7 @@ struct GroupKey {
     comm: Option<String>,
     override_comm: bool,
     sign: bool,
+    bypass: bool,
 }
 
 fn canonical_comm(comm: &IndexMap<String, Option<String>>) -> Option<String> {
@@ -593,6 +594,7 @@ impl Client {
                 comm: canonical_comm(&spec.comm),
                 override_comm: spec.override_comm,
                 sign: spec.sign,
+                bypass: spec.bypass,
             };
             groups.entry(key).or_default().push((index, spec));
         }
@@ -657,7 +659,18 @@ impl Client {
             .1;
         let device = self.inner.devices.get().await?;
         let policy = self.inner.policy();
-        let comm: IndexMap<String, String> = if base.override_comm {
+        let bypass = self.bypass();
+        let use_bypass = key.bypass && bypass.enabled;
+        let comm: IndexMap<String, String> = if use_bypass {
+            let mut comm = bypass.comm(&device.open_udid, &key.credential);
+            let overrides: IndexMap<String, String> = base
+                .comm
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone().unwrap_or_default()))
+                .collect();
+            crate::versioning::apply_comm_overrides(&mut comm, &overrides);
+            comm
+        } else if base.override_comm {
             base.comm
                 .iter()
                 .filter_map(|(k, v)| v.as_ref().map(|v| (k.clone(), v.clone())))
@@ -697,11 +710,14 @@ impl Client {
             Value::Object(comm.into_iter().map(|(k, v)| (k, Value::String(v))).collect()),
         );
         for (idx, (_, spec)) in items.iter().enumerate() {
-            let param = if spec.preserve_bool {
+            let mut param = if spec.preserve_bool {
                 spec.param.clone()
             } else {
                 bool_to_int(&spec.param)
             };
+            if use_bypass && let Some(guid) = param.get_mut("guid") {
+                *guid = Value::String(device.open_udid.clone());
+            }
             let mut req = Map::new();
             req.insert("module".into(), Value::String(spec.module.clone()));
             req.insert("method".into(), Value::String(spec.method.clone()));
@@ -720,7 +736,15 @@ impl Client {
         } else {
             Request::new(Method::Post, self.inner.endpoints.musicu.clone())
         };
-        request.set_header("User-Agent", policy.user_agent(key.platform, &device));
+        let user_agent = if use_bypass {
+            bypass
+                .user_agent
+                .clone()
+                .unwrap_or_else(|| policy.user_agent(Platform::Web, &device))
+        } else {
+            policy.user_agent(key.platform, &device)
+        };
+        request.set_header("User-Agent", user_agent);
         request.body = Body::Json(body);
         Ok(request)
     }

@@ -85,6 +85,9 @@ pub struct BypassConfig {
     pub cdn: String,
     /// Upgrade `http://` URLs to `https://`.
     pub force_https: bool,
+    /// User-Agent for bypass requests (`None` = the web/browser UA of the
+    /// version policy, matching a browser TLS fingerprint).
+    pub user_agent: Option<String>,
 }
 
 impl Default for BypassConfig {
@@ -97,6 +100,7 @@ impl Default for BypassConfig {
             extra_comm: IndexMap::new(),
             cdn: DEFAULT_CDN.to_string(),
             force_https: true,
+            user_agent: None,
         }
     }
 }

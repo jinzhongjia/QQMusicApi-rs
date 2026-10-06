@@ -65,6 +65,12 @@ pub struct CgiSpec {
     pub allow_error_codes: Option<AllowErrorCodes>,
     /// With allowed codes: parse `data` (true) or return the raw item (false).
     pub parse_on_allow: bool,
+    /// Use the client's [`BypassConfig`](crate::BypassConfig) `comm`
+    /// (playback URL requests). Ignored when the bypass is disabled.
+    ///
+    /// The `guid` parameter (when present) is replaced by the device GUID so
+    /// that `comm`, parameters and the derived `ct` stay consistent.
+    pub bypass: bool,
 }
 
 impl CgiSpec {
@@ -88,6 +94,7 @@ impl CgiSpec {
             sign: false,
             allow_error_codes: None,
             parse_on_allow: false,
+            bypass: false,
         }
     }
 }
@@ -150,6 +157,25 @@ macro_rules! cgi_builder_methods {
         /// Keep booleans in the parameters.
         pub fn preserve_bool(mut self, preserve: bool) -> Self {
             self.spec.preserve_bool = preserve;
+            self
+        }
+
+        /// Toggle the playback URL bypass for this request.
+        pub fn bypass(mut self, bypass: bool) -> Self {
+            self.spec.bypass = bypass;
+            self
+        }
+
+        /// Fail early without a valid credential.
+        pub fn require_login(mut self, require: bool) -> Self {
+            self.spec.require_login = require;
+            self
+        }
+
+        /// Accept the given error codes.
+        pub fn allow_error_codes(mut self, codes: impl Into<AllowErrorCodes>, parse_on_allow: bool) -> Self {
+            self.spec.allow_error_codes = Some(codes.into());
+            self.spec.parse_on_allow = parse_on_allow;
             self
         }
 
