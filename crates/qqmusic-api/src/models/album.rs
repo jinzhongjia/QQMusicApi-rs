@@ -1,14 +1,19 @@
 //! Album models.
 
 use serde::Serialize;
+use serde_json::Value;
 
 use super::base::{Album, Singer, Song};
 use crate::FromJson;
 use crate::pagination::PageItems;
 
 /// Album detail.
+///
+/// Like upstream, the inherited aliases are narrowed: `subtitle` only reads
+/// `subtitle` (not the translated name `albumTranName`) and `time_public`
+/// prefers `publishDate` over `time_public` (no `publish_date`).
 #[derive(Debug, Clone, Default, PartialEq, Serialize, FromJson)]
-#[json(default)]
+#[json(default, preprocess = "narrow_album_aliases")]
 pub struct AlbumDetail {
     /// Album.
     #[json(flatten)]
@@ -25,6 +30,16 @@ pub struct AlbumDetail {
     pub genre: String,
     /// Wiki URL.
     pub wikiurl: String,
+}
+
+fn narrow_album_aliases(value: &mut Value) {
+    if let Value::Object(map) = value {
+        map.shift_remove("albumTranName");
+        map.shift_remove("publish_date");
+        if let Some(date) = map.get("publishDate").filter(|date| !date.is_null()).cloned() {
+            map.insert("time_public".into(), date);
+        }
+    }
 }
 
 /// Record company.
@@ -141,6 +156,30 @@ mod tests {
     use super::*;
     use crate::json::from_value;
     use serde_json::json;
+
+    #[test]
+    fn album_detail_narrows_inherited_aliases() {
+        // Upstream AlbumDetail redefines subtitle/time_public without the base aliases.
+        let detail: AlbumDetail = from_value(&json!({
+            "albumMid": "m",
+            "albumTranName": "Translated",
+            "publish_date": "1999-01-01",
+            "time_public": "2000-01-01",
+            "publishDate": "2016-06-24"
+        }))
+        .unwrap();
+        assert_eq!(detail.album.subtitle, "");
+        assert_eq!(detail.album.time_public, "2016-06-24");
+
+        let detail: AlbumDetail = from_value(&json!({"subtitle": "S", "time_public": "2000-01-01"})).unwrap();
+        assert_eq!(detail.album.subtitle, "S");
+        assert_eq!(detail.album.time_public, "2000-01-01");
+
+        // The base model keeps the wider aliases.
+        let album: Album = from_value(&json!({"albumTranName": "T", "publish_date": "1999-01-01"})).unwrap();
+        assert_eq!(album.subtitle, "T");
+        assert_eq!(album.time_public, "1999-01-01");
+    }
 
     #[test]
     fn album_models() {
