@@ -84,3 +84,23 @@ async fn live_playable_url_with_bypass() {
         }
     });
 }
+
+/// QIMEI registration exercises the RSA-encrypted key exchange end to end:
+/// the service can only answer if it decrypted our PKCS#1 v1.5 ciphertext.
+#[cfg(feature = "reqwest-transport")]
+#[tokio::test]
+#[ignore = "requires network"]
+async fn live_qimei_registration() {
+    use std::sync::Arc;
+
+    use qqmusic_api::device::DeviceStore;
+    use qqmusic_api::qimei::QimeiProvider;
+    use qqmusic_api::transport::{ReqwestTransport, TransportConfig};
+    use qqmusic_api::versioning::VersionProfile;
+
+    let transport = Arc::new(ReqwestTransport::new(&TransportConfig::default()).expect("transport"));
+    let provider = QimeiProvider::new(Arc::new(DeviceStore::ephemeral()), VersionProfile::android(), transport);
+    let qimei = provider.get().await.expect("qimei");
+    assert_eq!(qimei.q36.len(), 36, "{qimei:?}");
+    println!("qimei: ok ({}…)", &qimei.q36[..8]);
+}
