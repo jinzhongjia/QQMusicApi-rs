@@ -17,7 +17,7 @@ qqmusic-api = { git = "https://github.com/jinzhongjia/QQMusicApi-rs" }
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
-最低支持 Rust 版本（MSRV）：**1.88**。
+最低支持 Rust 版本（MSRV）：**1.89**。
 
 | Feature | 默认 | 说明 |
 | --- | --- | --- |
