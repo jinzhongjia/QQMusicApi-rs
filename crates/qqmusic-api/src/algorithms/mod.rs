@@ -1,6 +1,7 @@
 //! Cryptographic helpers: request signing and QRC lyric decryption.
 
 pub mod qrc;
+pub mod rsa;
 pub mod sign;
 pub mod tripledes;
 

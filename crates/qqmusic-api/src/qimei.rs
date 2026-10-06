@@ -12,12 +12,11 @@ use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
 use cbc::cipher::{BlockModeEncrypt, KeyIvInit, block_padding::Pkcs7};
 use rand::{Rng, RngExt};
-use rsa::pkcs8::DecodePublicKey;
-use rsa::{Pkcs1v15Encrypt, RsaPublicKey};
 use serde_json::{Value, json};
 use tokio::sync::Mutex;
 use tokio::time::Instant;
 
+use crate::algorithms::rsa::RsaPublicKey;
 use crate::device::{Device, DeviceStore, Qimei};
 use crate::error::{Error, Result};
 use crate::transport::{Body, Method, Request, Transport};
@@ -52,13 +51,13 @@ pub fn aes_encrypt(key: &[u8; 16], content: &[u8], iv: Option<&[u8; 16]>) -> Vec
 
 /// RSA PKCS#1 v1.5 encryption with the QIMEI public key.
 pub fn rsa_encrypt(content: &[u8]) -> Result<Vec<u8>> {
-    let der = STANDARD
-        .decode(PUBLIC_KEY_DER_B64)
-        .map_err(|e| Error::invalid_argument(format!("invalid QIMEI public key: {e}")))?;
-    let key = RsaPublicKey::from_public_key_der(&der)
-        .map_err(|e| Error::invalid_argument(format!("invalid QIMEI public key: {e}")))?;
-    key.encrypt(&mut rsa::rand_core::OsRng, Pkcs1v15Encrypt, content)
-        .map_err(|e| Error::invalid_argument(format!("RSA encryption failed: {e}")))
+    static KEY: std::sync::OnceLock<std::result::Result<RsaPublicKey, String>> = std::sync::OnceLock::new();
+    let key = KEY.get_or_init(|| {
+        let der = STANDARD.decode(PUBLIC_KEY_DER_B64).map_err(|e| e.to_string())?;
+        RsaPublicKey::from_spki_der(&der).map_err(|e| e.to_string())
+    });
+    let key = key.as_ref().map_err(|e| Error::invalid_argument(format!("invalid QIMEI public key: {e}")))?;
+    key.encrypt_pkcs1v15(content).map_err(|e| Error::invalid_argument(format!("RSA encryption failed: {e}")))
 }
 
 /// Device token `oz` (encrypted Android id).
