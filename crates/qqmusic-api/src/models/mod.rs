@@ -2,6 +2,7 @@
 
 pub mod album;
 pub mod base;
+pub mod comment;
 pub mod lyric;
 pub mod mv;
 pub mod search;

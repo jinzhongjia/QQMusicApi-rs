@@ -90,6 +90,7 @@ macro_rules! api_module {
     };
 }
 pub mod album;
+pub mod comment;
 pub mod lyric;
 pub mod mv;
 pub mod search;
@@ -102,6 +103,11 @@ impl Client {
     /// Album APIs.
     pub fn album(&self) -> album::AlbumApi {
         album::AlbumApi::new(self)
+    }
+
+    /// Comment APIs.
+    pub fn comment(&self) -> comment::CommentApi {
+        comment::CommentApi::new(self)
     }
 
     /// Lyric APIs.
