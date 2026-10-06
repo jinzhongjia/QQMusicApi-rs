@@ -10,6 +10,7 @@ pub mod device;
 pub mod error;
 pub mod json;
 pub mod models;
+pub mod mqtt;
 pub mod modules;
 pub mod pagination;
 pub mod qimei;

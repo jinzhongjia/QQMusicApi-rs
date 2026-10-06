@@ -100,6 +100,7 @@ pub struct ClientBuilder {
     headers: Vec<(String, String)>,
     endpoints: Endpoints,
     bypass: BypassConfig,
+    mqtt_connector: Option<Arc<dyn crate::mqtt::MqttConnector>>,
 }
 
 impl std::fmt::Debug for ClientBuilder {
@@ -130,6 +131,7 @@ impl Default for ClientBuilder {
             headers: Vec::new(),
             endpoints: Endpoints::default(),
             bypass: BypassConfig::default(),
+            mqtt_connector: None,
         }
     }
 }
@@ -273,6 +275,14 @@ impl ClientBuilder {
         self
     }
 
+    /// MQTT connector used by the QQ Music App QR login (defaults to plain
+    /// `wss://` when the `mobile-login` feature is enabled).
+    #[must_use]
+    pub fn mqtt_connector(mut self, connector: Arc<dyn crate::mqtt::MqttConnector>) -> Self {
+        self.mqtt_connector = Some(connector);
+        self
+    }
+
     /// Build the client.
     pub fn build(self) -> Result<Client> {
         let transport: Arc<dyn Transport> = match self.transport {
@@ -314,6 +324,7 @@ impl ClientBuilder {
             headers: self.headers,
             endpoints: self.endpoints,
             batch_size: self.batch_size,
+            mqtt_connector: self.mqtt_connector.or_else(default_mqtt_connector),
         };
         Ok(Client {
             inner: Arc::new(inner),
@@ -336,6 +347,17 @@ pub(crate) struct Inner {
     headers: Vec<(String, String)>,
     pub(crate) endpoints: Endpoints,
     batch_size: usize,
+    pub(crate) mqtt_connector: Option<Arc<dyn crate::mqtt::MqttConnector>>,
+}
+
+#[cfg(feature = "mobile-login")]
+fn default_mqtt_connector() -> Option<Arc<dyn crate::mqtt::MqttConnector>> {
+    Some(Arc::new(crate::mqtt::ws::WsConnector))
+}
+
+#[cfg(not(feature = "mobile-login"))]
+fn default_mqtt_connector() -> Option<Arc<dyn crate::mqtt::MqttConnector>> {
+    None
 }
 
 fn read<T: Clone>(lock: &RwLock<T>) -> T {
