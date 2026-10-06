@@ -1,0 +1,52 @@
+[package]
+name = "qqmusic-api"
+description = "Async Rust client for the QQ Music API (port of L-1124/QQMusicApi) with customizable risk-control bypass options"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "../../README.md"
+keywords = ["qqmusic", "music", "api", "tencent"]
+categories = ["api-bindings", "asynchronous"]
+
+[features]
+default = ["reqwest-transport", "mobile-login"]
+## Default HTTP transport backed by reqwest + rustls.
+reqwest-transport = ["dep:reqwest"]
+## SOCKS proxy support for the reqwest transport.
+socks = ["reqwest-transport", "reqwest/socks"]
+## QQ Music App QR login (MQTT over WebSocket).
+mobile-login = ["dep:tokio-tungstenite"]
+
+[dependencies]
+qqmusic-api-derive.workspace = true
+async-trait = "0.1"
+base64 = "0.22"
+flate2 = "1"
+futures = "0.3"
+hex = "0.4"
+indexmap = { version = "2", features = ["serde"] }
+md-5 = "0.10"
+rand = "0.9"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+sha1 = "0.10"
+sha2 = "0.10"
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc"] }
+rsa = "0.9"
+thiserror = "2"
+tokio = { version = "1", features = ["sync", "time", "macros", "rt"] }
+tracing = "0.1"
+url = "2"
+reqwest = { version = "0.13", optional = true, default-features = false, features = ["rustls", "gzip", "deflate", "brotli", "http2", "charset"] }
+tokio-tungstenite = { version = "0.30", optional = true, default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full", "test-util"] }
+tempfile = "3"
+
+[lints]
+workspace = true
