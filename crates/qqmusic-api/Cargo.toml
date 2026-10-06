@@ -50,3 +50,15 @@ tempfile = "3"
 
 [lints]
 workspace = true
+
+[[example]]
+name = "search"
+required-features = ["reqwest-transport"]
+
+[[example]]
+name = "song_url"
+required-features = ["reqwest-transport"]
+
+[[example]]
+name = "qrcode_login"
+required-features = ["reqwest-transport"]
