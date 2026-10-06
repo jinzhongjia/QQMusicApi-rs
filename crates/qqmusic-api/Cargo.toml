@@ -80,3 +80,7 @@ required-features = ["reqwest-transport"]
 [[example]]
 name = "qrcode_login"
 required-features = ["reqwest-transport"]
+
+[[bench]]
+name = "overhead"
+harness = false
