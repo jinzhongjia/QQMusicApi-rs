@@ -92,6 +92,7 @@ macro_rules! api_module {
 pub mod album;
 pub mod lyric;
 pub mod search;
+pub mod singer;
 pub mod song;
 
 impl Client {
@@ -108,6 +109,11 @@ impl Client {
     /// Search APIs.
     pub fn search(&self) -> search::SearchApi {
         search::SearchApi::new(self)
+    }
+
+    /// Singer APIs.
+    pub fn singer(&self) -> singer::SingerApi {
+        singer::SingerApi::new(self)
     }
 
     /// Song APIs.
