@@ -8,10 +8,9 @@ use serde_json::{Value, json};
 use crate::credential::Credential;
 use crate::error::{Error, Result};
 use crate::models::song::{
-    GetCdnDispatchResponse, GetFavNumResponse, GetOtherVersionResponse, GetProducerResponse,
-    GetRelatedMvResponse, GetRelatedSonglistResponse, GetSheetResponse, GetSimilarSongResponse,
-    GetSongDetailResponse, GetSongLabelsResponse, GetSongUrlsResponse, HasSheetMusicResponse,
-    QuerySongResponse,
+    GetCdnDispatchResponse, GetFavNumResponse, GetOtherVersionResponse, GetProducerResponse, GetRelatedMvResponse,
+    GetRelatedSonglistResponse, GetSheetResponse, GetSimilarSongResponse, GetSongDetailResponse, GetSongLabelsResponse,
+    GetSongUrlsResponse, HasSheetMusicResponse, QuerySongResponse,
 };
 use crate::pagination::{CursorStrategy, Paged};
 use crate::request::CgiRequest;
@@ -144,20 +143,12 @@ file_types! {
 
 impl SongFileType {
     const fn new_const(code: &'static str, extension: &'static str, encrypted: bool) -> Self {
-        Self {
-            code: Cow::Borrowed(code),
-            extension: Cow::Borrowed(extension),
-            encrypted,
-        }
+        Self { code: Cow::Borrowed(code), extension: Cow::Borrowed(extension), encrypted }
     }
 
     /// Custom file type.
     pub fn custom(code: impl Into<String>, extension: impl Into<String>, encrypted: bool) -> Self {
-        Self {
-            code: Cow::Owned(code.into()),
-            extension: Cow::Owned(extension.into()),
-            encrypted,
-        }
+        Self { code: Cow::Owned(code.into()), extension: Cow::Owned(extension.into()), encrypted }
     }
 
     /// File name for a song.
@@ -191,10 +182,7 @@ pub struct SongFileInfo {
 impl SongFileInfo {
     /// Song by mid.
     pub fn new(mid: impl Into<String>) -> Self {
-        Self {
-            mid: mid.into(),
-            ..Self::default()
-        }
+        Self { mid: mid.into(), ..Self::default() }
     }
 
     /// Set the file type.
@@ -246,10 +234,7 @@ pub struct SongQuery {
 impl SongQuery {
     /// Query with a song type.
     pub fn new(song: impl Into<SongRef>, song_type: i64) -> Self {
-        Self {
-            song: song.into(),
-            song_type,
-        }
+        Self { song: song.into(), song_type }
     }
 }
 
@@ -404,10 +389,7 @@ impl SongApi {
     {
         let files: Vec<SongFileInfo> = files.into_iter().map(Into::into).collect();
         if files.len() > MAX_URL_MIDS {
-            return Err(Error::invalid_argument(format!(
-                "mid 数量不能超过 {MAX_URL_MIDS}, 当前为 {}",
-                files.len()
-            )));
+            return Err(Error::invalid_argument(format!("mid 数量不能超过 {MAX_URL_MIDS}, 当前为 {}", files.len())));
         }
         let mut songmid = Vec::with_capacity(files.len());
         let mut filename = Vec::with_capacity(files.len());
@@ -447,9 +429,13 @@ impl SongApi {
     /// All tiers are requested in a single call; the highest tier with a
     /// `purl` wins. Returns `None` when no tier is available (no copyright /
     /// VIP required).
-    pub async fn playable_url(&self, mid: &str, media_mid: Option<&str>, max_quality: Quality) -> Result<Option<PlayableUrl>> {
-        self.playable_url_with_ladder(mid, media_mid, &ladder_from(&DEFAULT_LADDER, max_quality))
-            .await
+    pub async fn playable_url(
+        &self,
+        mid: &str,
+        media_mid: Option<&str>,
+        max_quality: Quality,
+    ) -> Result<Option<PlayableUrl>> {
+        self.playable_url_with_ladder(mid, media_mid, &ladder_from(&DEFAULT_LADDER, max_quality)).await
     }
 
     /// [`playable_url`](Self::playable_url) with a custom ladder.
@@ -463,10 +449,8 @@ impl SongApi {
             return Err(Error::invalid_argument("quality ladder 不能为空"));
         }
         let file_mid = media_mid.filter(|m| !m.is_empty()).unwrap_or(mid);
-        let filenames: Vec<String> = ladder
-            .iter()
-            .map(|(_, ty)| format!("{}{file_mid}{file_mid}{}", ty.code, ty.extension))
-            .collect();
+        let filenames: Vec<String> =
+            ladder.iter().map(|(_, ty)| format!("{}{file_mid}{file_mid}{}", ty.code, ty.extension)).collect();
         let response: GetSongUrlsResponse = self
             .cgi(
                 "music.vkey.GetVkey",
@@ -497,12 +481,8 @@ impl SongApi {
 
     /// Song detail (web platform).
     pub fn get_detail(&self, song: impl Into<SongRef>) -> CgiRequest<GetSongDetailResponse> {
-        self.cgi(
-            "music.pf_song_detail_svr",
-            "get_song_detail_yqq",
-            song.into().param("song_id", "song_mid"),
-        )
-        .platform(Platform::Web)
+        self.cgi("music.pf_song_detail_svr", "get_song_detail_yqq", song.into().param("song_id", "song_mid"))
+            .platform(Platform::Web)
     }
 
     /// Similar songs.
@@ -590,8 +570,7 @@ impl SongApi {
 
     /// Whether sheet music exists.
     pub fn has_sheet(&self, mid: &str) -> CgiRequest<HasSheetMusicResponse> {
-        self.cgi("music.mir.SheetMusicSvr", "HasSheetMusic", json!({"songMid": mid}))
-            .override_comm(sheet_comm())
+        self.cgi("music.mir.SheetMusicSvr", "HasSheetMusic", json!({"songMid": mid})).override_comm(sheet_comm())
     }
 
     /// Favourite counts.
@@ -671,12 +650,7 @@ mod tests {
         assert!(client.song().get_song_urls(too_many, SongFileType::MP3_128, None).is_err());
 
         push_cgi(&mock, json!({"midurlinfo": [{"songmid": "m", "purl": "p"}]}));
-        let res = client
-            .song()
-            .get_song_urls(["m", "n"], SongFileType::FLAC, None)
-            .unwrap()
-            .await
-            .unwrap();
+        let res = client.song().get_song_urls(["m", "n"], SongFileType::FLAC, None).unwrap().await.unwrap();
         assert_eq!(res.data[0].purl, "p");
         let body = last_body(&mock);
         let device = client.device().await.unwrap();
@@ -720,10 +694,7 @@ mod tests {
     async fn playable_url_picks_highest_available() {
         let (client, mock) = logged_in_client();
         client.set_bypass(BypassConfig::default().with_fixed_ct(13));
-        push_cgi(
-            &mock,
-            json!({"midurlinfo": [{"purl": ""}, {"purl": ""}, {"purl": "M800x.mp3?vkey=1"}]}),
-        );
+        push_cgi(&mock, json!({"midurlinfo": [{"purl": ""}, {"purl": ""}, {"purl": "M800x.mp3?vkey=1"}]}));
         let url = client.song().playable_url("mid1", None, Quality::Lossless).await.unwrap().unwrap();
         assert_eq!(url.quality, Quality::High);
         assert_eq!(url.file_type, SongFileType::MP3_320);

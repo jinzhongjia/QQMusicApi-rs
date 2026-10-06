@@ -73,9 +73,7 @@ impl FromStr for DeviceProfile {
             "vivo" => Ok(Self::Vivo),
             "xiaomi" => Ok(Self::Xiaomi),
             "oppo" => Ok(Self::Oppo),
-            other => Err(Error::invalid_argument(format!(
-                "未知设备档案: {other}. 可选值: vivo, xiaomi, oppo"
-            ))),
+            other => Err(Error::invalid_argument(format!("未知设备档案: {other}. 可选值: vivo, xiaomi, oppo"))),
         }
     }
 }
@@ -243,22 +241,14 @@ pub fn random_imei(rng: &mut impl Rng) -> String {
         })
         .sum();
     let check = (10 - sum % 10) % 10;
-    digits
-        .iter()
-        .chain(std::iter::once(&check))
-        .map(|d| char::from_digit(*d, 10).unwrap_or('0'))
-        .collect()
+    digits.iter().chain(std::iter::once(&check)).map(|d| char::from_digit(*d, 10).unwrap_or('0')).collect()
 }
 
 fn random_mac(rng: &mut impl RngCore) -> String {
     let mut octets = [0u8; 6];
     octets[0] = 2;
     rng.fill_bytes(&mut octets[1..]);
-    octets
-        .iter()
-        .map(|o| format!("{o:02X}"))
-        .collect::<Vec<_>>()
-        .join(":")
+    octets.iter().map(|o| format!("{o:02X}")).collect::<Vec<_>>().join(":")
 }
 
 fn random_uuid_v4(rng: &mut impl RngCore) -> [u8; 16] {
@@ -271,14 +261,7 @@ fn random_uuid_v4(rng: &mut impl RngCore) -> [u8; 16] {
 
 fn uuid_hyphenated(bytes: &[u8; 16]) -> String {
     let hex = hex::encode(bytes);
-    format!(
-        "{}-{}-{}-{}-{}",
-        &hex[0..8],
-        &hex[8..12],
-        &hex[12..16],
-        &hex[16..20],
-        &hex[20..32]
-    )
+    format!("{}-{}-{}-{}-{}", &hex[0..8], &hex[8..12], &hex[12..16], &hex[16..20], &hex[20..32])
 }
 
 impl Device {
@@ -291,9 +274,7 @@ impl Device {
             Some(seed) => StdRng::seed_from_u64(seed),
             None => StdRng::from_os_rng(),
         };
-        let profile = profile.unwrap_or_else(|| {
-            DeviceProfile::ALL[rng.random_range(0..DeviceProfile::ALL.len())]
-        });
+        let profile = profile.unwrap_or_else(|| DeviceProfile::ALL[rng.random_range(0..DeviceProfile::ALL.len())]);
         let data = profile_data(profile);
         let boot_id = uuid_hyphenated(&random_uuid_v4(&mut rng));
         let imei = random_imei(&mut rng);
@@ -413,18 +394,13 @@ pub struct DeviceCacheStore {
 impl DeviceCacheStore {
     /// Create a store backed by `path` (`None` keeps everything in memory).
     pub fn new(path: Option<PathBuf>) -> Self {
-        Self {
-            path,
-            data: Mutex::new(None),
-        }
+        Self { path, data: Mutex::new(None) }
     }
 
     /// Cache path derived from the device path.
     pub fn path_for_device(device_path: &Path) -> PathBuf {
-        let stem = device_path
-            .file_stem()
-            .map(|s| s.to_string_lossy().into_owned())
-            .unwrap_or_else(|| "device".to_string());
+        let stem =
+            device_path.file_stem().map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "device".to_string());
         device_path.with_file_name(format!("{stem}.cache.json"))
     }
 
@@ -437,10 +413,7 @@ impl DeviceCacheStore {
         let Some(path) = &self.path else {
             return CacheData::default();
         };
-        std::fs::read(path)
-            .ok()
-            .and_then(|bytes| serde_json::from_slice(&bytes).ok())
-            .unwrap_or_default()
+        std::fs::read(path).ok().and_then(|bytes| serde_json::from_slice(&bytes).ok()).unwrap_or_default()
     }
 
     fn save(&self, data: &CacheData) {
@@ -460,20 +433,14 @@ impl DeviceCacheStore {
     pub async fn qimei(&self) -> Option<(Qimei, i64)> {
         let mut guard = self.data.lock().await;
         let data = guard.get_or_insert_with(|| self.load());
-        data.qimei
-            .as_ref()
-            .map(|r| (Qimei { q16: r.q16.clone(), q36: r.q36.clone() }, r.saved_at))
+        data.qimei.as_ref().map(|r| (Qimei { q16: r.q16.clone(), q36: r.q36.clone() }, r.saved_at))
     }
 
     /// Store QIMEI.
     pub async fn set_qimei(&self, qimei: &Qimei, saved_at: i64) {
         let mut guard = self.data.lock().await;
         let data = guard.get_or_insert_with(|| self.load());
-        data.qimei = Some(QimeiRecord {
-            q16: qimei.q16.clone(),
-            q36: qimei.q36.clone(),
-            saved_at,
-        });
+        data.qimei = Some(QimeiRecord { q16: qimei.q16.clone(), q36: qimei.q36.clone(), saved_at });
         self.save(data);
     }
 
@@ -504,22 +471,14 @@ pub struct DeviceStore {
 impl DeviceStore {
     /// In-memory random device (a new identity per process).
     pub fn ephemeral() -> Self {
-        Self {
-            path: None,
-            device: Mutex::new(None),
-            cache: Arc::new(DeviceCacheStore::new(None)),
-        }
+        Self { path: None, device: Mutex::new(None), cache: Arc::new(DeviceCacheStore::new(None)) }
     }
 
     /// Device persisted in a JSON file (created on first use).
     pub fn file(path: impl Into<PathBuf>) -> Self {
         let path = path.into();
         let cache = DeviceCacheStore::new(Some(DeviceCacheStore::path_for_device(&path)));
-        Self {
-            path: Some(path),
-            device: Mutex::new(None),
-            cache: Arc::new(cache),
-        }
+        Self { path: Some(path), device: Mutex::new(None), cache: Arc::new(cache) }
     }
 
     /// Fixed device supplied by the caller (never written to disk).
@@ -597,8 +556,7 @@ impl DeviceStore {
                 format!("invalid device file {}: {err}", path.display()),
             )
         })?;
-        let complete = raw.len() == DEVICE_FIELDS.len()
-            && DEVICE_FIELDS.iter().all(|field| raw.contains_key(*field));
+        let complete = raw.len() == DEVICE_FIELDS.len() && DEVICE_FIELDS.iter().all(|field| raw.contains_key(*field));
         if !complete {
             save_device(&device, path)?;
         }
@@ -612,20 +570,14 @@ impl DeviceStore {
         if let (Some(q16), Some(q36)) = (text("qimei"), text("qimei36"))
             && self.cache.qimei().await.is_none()
         {
-            let qimei = Qimei {
-                q16: q16.to_string(),
-                q36: q36.to_string(),
-            };
+            let qimei = Qimei { q16: q16.to_string(), q36: q36.to_string() };
             self.cache.set_qimei(&qimei, ts("qimei_save_time")).await;
         }
         if let (Some(uid), Some(sid)) = (text("session_uid"), text("session_sid"))
             && self.cache.session().await.is_none()
         {
-            let session = SessionRecord {
-                uid: uid.to_string(),
-                sid: sid.to_string(),
-                saved_at: ts("session_save_time"),
-            };
+            let session =
+                SessionRecord { uid: uid.to_string(), sid: sid.to_string(), saved_at: ts("session_save_time") };
             self.cache.set_session(&session).await;
         }
     }
@@ -720,8 +672,7 @@ mod tests {
         assert_eq!(device.android_id, "abcdef0123456789");
         assert_eq!(device.model, "Custom");
 
-        let rewritten: Map<String, Value> =
-            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let rewritten: Map<String, Value> = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
         assert_eq!(rewritten.len(), DEVICE_FIELDS.len());
         assert!(!rewritten.contains_key("qimei"));
 
@@ -761,12 +712,8 @@ mod tests {
         let path = dir.path().join("x.cache.json");
         let store = DeviceCacheStore::new(Some(path.clone()));
         assert!(store.qimei().await.is_none());
-        store
-            .set_qimei(&Qimei { q16: "a".into(), q36: "b".into() }, 5)
-            .await;
-        store
-            .set_session(&SessionRecord { uid: "u".into(), sid: "s".into(), saved_at: 6 })
-            .await;
+        store.set_qimei(&Qimei { q16: "a".into(), q36: "b".into() }, 5).await;
+        store.set_session(&SessionRecord { uid: "u".into(), sid: "s".into(), saved_at: 6 }).await;
         let reloaded = DeviceCacheStore::new(Some(path));
         assert_eq!(reloaded.qimei().await.unwrap().1, 5);
         assert_eq!(reloaded.session().await.unwrap().saved_at, 6);

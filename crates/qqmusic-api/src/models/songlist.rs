@@ -103,7 +103,8 @@ mod tests {
         assert_eq!(detail.info.creator.nick, "n");
         assert_eq!((detail.size, detail.total, detail.hasmore), (1, 9, 1));
         assert_eq!(detail.into_items()[0].mid, "a");
-        let created: CreateDeleteSonglistResp = from_value(&json!({"retCode": 0, "result": {"tid": 5, "dirId": 3, "dirName": "x"}})).unwrap();
+        let created: CreateDeleteSonglistResp =
+            from_value(&json!({"retCode": 0, "result": {"tid": 5, "dirId": 3, "dirName": "x"}})).unwrap();
         assert_eq!((created.id, created.dirid, created.name.as_str()), (5, 3, "x"));
     }
 }

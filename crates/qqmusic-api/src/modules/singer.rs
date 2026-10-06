@@ -4,8 +4,8 @@ use serde_json::{Value, json};
 
 use crate::models::singer::{
     HomepageHeaderResponse, HomepageTabDetailResponse, SimilarSingerResponse, SingerAlbumListResponse,
-    SingerDetailResponse, SingerIndexPageResponse, SingerMvListResponse, SingerMvTagResponse,
-    SingerSongListResponse, SingerTypeListResponse,
+    SingerDetailResponse, SingerIndexPageResponse, SingerMvListResponse, SingerMvTagResponse, SingerSongListResponse,
+    SingerTypeListResponse,
 };
 use crate::pagination::{FnStrategy, OffsetStrategy, PageStrategy, Paged};
 use crate::request::CgiRequest;
@@ -147,11 +147,7 @@ pub struct SingerFilter {
 
 impl Default for SingerFilter {
     fn default() -> Self {
-        Self {
-            area: AreaType::All,
-            sex: SexType::All,
-            genre: GenreType::All,
-        }
+        Self { area: AreaType::All, sex: SexType::All, genre: GenreType::All }
     }
 }
 
@@ -208,12 +204,8 @@ impl SingerApi {
 
     /// Homepage header (Android platform).
     pub fn get_info(&self, mid: &str) -> CgiRequest<HomepageHeaderResponse> {
-        self.cgi(
-            "music.UnifiedHomepage.UnifiedHomepageSrv",
-            "GetHomepageHeader",
-            json!({"SingerMid": mid}),
-        )
-        .platform(Platform::Android)
+        self.cgi("music.UnifiedHomepage.UnifiedHomepageSrv", "GetHomepageHeader", json!({"SingerMid": mid}))
+            .platform(Platform::Android)
     }
 
     /// Homepage tab detail (page pagination).
@@ -268,11 +260,7 @@ impl SingerApi {
 
     /// Similar singers.
     pub fn get_similar(&self, mid: &str, number: i64) -> CgiRequest<SimilarSingerResponse> {
-        self.cgi(
-            "music.SimilarSingerSvr",
-            "GetSimilarSingerList",
-            json!({"singerMid": mid, "number": number}),
-        )
+        self.cgi("music.SimilarSingerSvr", "GetSimilarSingerList", json!({"singerMid": mid, "number": number}))
     }
 
     /// Songs (offset pagination).
@@ -361,7 +349,11 @@ mod tests {
     async fn singer_list_and_index_paging() {
         let (client, mock) = mock_client();
         push_cgi(&mock, json!({"singerlist": [{"singer_mid": "a"}]}));
-        let list = client.singer().get_singer_list(SingerFilter { area: AreaType::Korea, ..SingerFilter::default() }).await.unwrap();
+        let list = client
+            .singer()
+            .get_singer_list(SingerFilter { area: AreaType::Korea, ..SingerFilter::default() })
+            .await
+            .unwrap();
         assert_eq!(list.singerlist[0].mid, "a");
         assert_eq!(last_req0(&mock)["param"], json!({"hastag": 0, "area": 3, "sex": -100, "genre": -100}));
 
@@ -393,7 +385,14 @@ mod tests {
         push_cgi(&mock, json!({"HasMore": 0}));
         let pages = client
             .singer()
-            .get_tab_detail("m", TabType::Album, 1, 10, OrderType::Latest, Some(json!({"IsNeedFilterType": 1, "FilterType": 0})))
+            .get_tab_detail(
+                "m",
+                TabType::Album,
+                1,
+                10,
+                OrderType::Latest,
+                Some(json!({"IsNeedFilterType": 1, "FilterType": 0})),
+            )
             .collect(None)
             .await
             .unwrap();
@@ -421,7 +420,12 @@ mod tests {
         assert_eq!(songs[0].mid, "s");
 
         push_cgi(&mock, json!({"total": 1, "albumList": [{"albumMid": "a"}]}));
-        client.singer().get_album_list("m", 10, 2, OrderType::Latest, Some(AlbumFilterType::Live)).collect(None).await.unwrap();
+        client
+            .singer()
+            .get_album_list("m", 10, 2, OrderType::Latest, Some(AlbumFilterType::Live))
+            .collect(None)
+            .await
+            .unwrap();
         let req = last_req0(&mock);
         assert_eq!(req["param"]["types"], json!([1]));
         assert_eq!(req["param"]["begin"], 10);

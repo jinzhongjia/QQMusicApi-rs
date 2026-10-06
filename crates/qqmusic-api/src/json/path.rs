@@ -114,9 +114,7 @@ pub fn select<'a>(root: &'a Value, expr: &str) -> Option<Cow<'a, Value>> {
         return None;
     }
     if has_wildcard || matches.len() > 1 {
-        Some(Cow::Owned(Value::Array(
-            matches.into_iter().cloned().collect(),
-        )))
+        Some(Cow::Owned(Value::Array(matches.into_iter().cloned().collect())))
     } else {
         Some(Cow::Borrowed(matches[0]))
     }

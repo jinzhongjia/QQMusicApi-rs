@@ -28,13 +28,7 @@ pub struct LyricOptions {
 
 impl Default for LyricOptions {
     fn default() -> Self {
-        Self {
-            song_type: 1,
-            qrc: false,
-            trans: false,
-            roma: false,
-            singing_annotations: false,
-        }
+        Self { song_type: 1, qrc: false, trans: false, roma: false, singing_annotations: false }
     }
 }
 
@@ -69,8 +63,7 @@ impl LyricApi {
 
     /// Singing annotation availability.
     pub fn get_singing_annotations_info(&self, songid: i64) -> CgiRequest<GetSingingAnnotationsInfoResponse> {
-        self.cgi(MODULE, "GetSingingAnnotationsInfo", json!({"songID": songid, "needNum": false}))
-            .preserve_bool(true)
+        self.cgi(MODULE, "GetSingingAnnotationsInfo", json!({"songID": songid, "needNum": false})).preserve_bool(true)
     }
 
     /// Translations in multiple styles.
@@ -122,7 +115,10 @@ mod tests {
     #[tokio::test]
     async fn other_lyric_endpoints() {
         let (client, mock) = mock_client();
-        mock.route_url("musicu", reply_all(json!({"hasSingingAnnotationsLyric": true, "exists": true, "lyrics": [], "dictList": []})));
+        mock.route_url(
+            "musicu",
+            reply_all(json!({"hasSingingAnnotationsLyric": true, "exists": true, "lyrics": [], "dictList": []})),
+        );
         assert!(client.lyric().get_singing_annotations_info(1).await.unwrap().has_singing_annotations_lyric);
         assert_eq!(last_req0(&mock)["param"], json!({"songID": 1, "needNum": false}));
         assert!(client.lyric().is_ai_dict_exists(2).await.unwrap().exists);

@@ -155,7 +155,8 @@ mod tests {
         assert_eq!(res.lyric, "[00:00.00]晴天");
         assert_eq!(res.trans, "not-hex");
         assert!(res.has_multi_trans);
-        let item: MultiStyleLyricItem = from_value(&json!({"style": 1, "styleName": "s", "lyric": qrc_encrypt("x")})).unwrap();
+        let item: MultiStyleLyricItem =
+            from_value(&json!({"style": 1, "styleName": "s", "lyric": qrc_encrypt("x")})).unwrap();
         assert_eq!(item.lyric, "x");
         let dict: GetAiDictResponse = from_value(&json!({"dictList": [{"phrase": "p"}]})).unwrap();
         assert_eq!(dict.dict_list[0].phrase, "p");

@@ -37,14 +37,7 @@ pub fn utc_datetime(ts: i64) -> (i64, u32, u32, u32, u32, u32) {
     let day = (doy - (153 * mp + 2) / 5 + 1) as u32;
     let month = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
     let year = yoe + era * 400 + i64::from(month <= 2);
-    (
-        year,
-        month,
-        day,
-        (secs / 3600) as u32,
-        (secs % 3600 / 60) as u32,
-        (secs % 60) as u32,
-    )
+    (year, month, day, (secs / 3600) as u32, (secs % 3600 / 60) as u32, (secs % 60) as u32)
 }
 
 /// Day number (days since epoch) in China Standard Time (UTC+8).
@@ -77,9 +70,7 @@ pub fn get_guid() -> String {
 
 /// `hash33` used to compute `g_tk`.
 pub fn hash33(s: &str, seed: u64) -> i64 {
-    let h = s.chars().fold(seed, |h, c| {
-        (h << 5).wrapping_add(h).wrapping_add(u64::from(u32::from(c)))
-    });
+    let h = s.chars().fold(seed, |h, c| (h << 5).wrapping_add(h).wrapping_add(u64::from(u32::from(c))));
     i64::try_from(h & 0x7FFF_FFFF).unwrap_or_default()
 }
 
@@ -98,11 +89,7 @@ pub fn bool_to_int(value: &Value) -> Value {
     match value {
         Value::Bool(b) => Value::from(u8::from(*b)),
         Value::Array(items) => Value::Array(items.iter().map(bool_to_int).collect()),
-        Value::Object(map) => Value::Object(
-            map.iter()
-                .map(|(k, v)| (k.clone(), bool_to_int(v)))
-                .collect(),
-        ),
+        Value::Object(map) => Value::Object(map.iter().map(|(k, v)| (k.clone(), bool_to_int(v))).collect()),
         other => other.clone(),
     }
 }
@@ -189,10 +176,7 @@ mod tests {
     #[test]
     fn bool_to_int_is_recursive() {
         let value = json!({"a": true, "b": [false, {"c": true}], "d": "true", "e": 1});
-        assert_eq!(
-            bool_to_int(&value),
-            json!({"a": 1, "b": [0, {"c": 1}], "d": "true", "e": 1})
-        );
+        assert_eq!(bool_to_int(&value), json!({"a": 1, "b": [0, {"c": 1}], "d": "true", "e": 1}));
     }
 
     #[test]

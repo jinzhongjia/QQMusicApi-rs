@@ -87,13 +87,7 @@ impl Credential {
         } else {
             2
         };
-        Self {
-            musicid,
-            str_musicid: musicid.to_string(),
-            musickey,
-            login_type,
-            ..Self::default()
-        }
+        Self { musicid, str_musicid: musicid.to_string(), musickey, login_type, ..Self::default() }
     }
 
     /// Parse a credential from a JSON value (login responses or saved files).
@@ -123,11 +117,7 @@ impl Credential {
 
     /// `uin` value used in cookies.
     pub fn uin(&self) -> String {
-        if self.str_musicid.is_empty() {
-            self.musicid.to_string()
-        } else {
-            self.str_musicid.clone()
-        }
+        if self.str_musicid.is_empty() { self.musicid.to_string() } else { self.str_musicid.clone() }
     }
 }
 
@@ -182,11 +172,7 @@ mod tests {
         let cred = Credential::new(10, "key");
         assert!(cred.is_valid());
         assert!(cred.is_expired());
-        let fresh = Credential {
-            musickey_create_time: now_secs(),
-            key_expires_in: 3600,
-            ..cred.clone()
-        };
+        let fresh = Credential { musickey_create_time: now_secs(), key_expires_in: 3600, ..cred.clone() };
         assert!(!fresh.is_expired());
         assert_eq!(cred.uin(), "10");
         let custom = Credential { str_musicid: "o10".into(), ..cred };
@@ -195,10 +181,7 @@ mod tests {
 
     #[test]
     fn serde_roundtrip() {
-        let cred = Credential {
-            musickey_create_time: 5,
-            ..Credential::new(42, "W_X_key")
-        };
+        let cred = Credential { musickey_create_time: 5, ..Credential::new(42, "W_X_key") };
         let text = cred.to_json_string();
         assert!(text.contains("\"musickey_create_time\":5"));
         let back: Credential = serde_json::from_str(&text).unwrap();

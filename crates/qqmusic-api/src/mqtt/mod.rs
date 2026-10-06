@@ -198,14 +198,17 @@ impl fmt::Debug for MqttSession {
 
 impl MqttSession {
     /// Connect (following up to `max_redirects` server redirects).
-    pub async fn connect(connector: &dyn MqttConnector, target: WsTarget, options: &ConnectOptions) -> Result<Self, MqttError> {
+    pub async fn connect(
+        connector: &dyn MqttConnector,
+        target: WsTarget,
+        options: &ConnectOptions,
+    ) -> Result<Self, MqttError> {
         let mut target = target;
         let mut redirects = 0;
         loop {
             let attempt = Self::connect_once(connector, &target, options);
-            let (session, reason, props) = timeout(options.connect_timeout, attempt)
-                .await
-                .map_err(|_| MqttError::Timeout("connect"))??;
+            let (session, reason, props) =
+                timeout(options.connect_timeout, attempt).await.map_err(|_| MqttError::Timeout("connect"))??;
             if reason == 0 {
                 let mut session = session;
                 if let Some(keep_alive) = props.server_keep_alive {
@@ -246,9 +249,7 @@ impl MqttSession {
             pending: VecDeque::new(),
             path: target.path.clone(),
         };
-        session
-            .send(codec::encode_connect(&options.client_id, options.keep_alive, &options.properties))
-            .await?;
+        session.send(codec::encode_connect(&options.client_id, options.keep_alive, &options.properties)).await?;
         loop {
             match session.read_packet().await? {
                 Packet::ConnAck { reason, properties, .. } => return Ok((session, reason, properties)),
@@ -319,13 +320,7 @@ impl MqttSession {
 
     async fn handle_async_packet(&mut self, packet: Packet) -> Result<(), MqttError> {
         match packet {
-            Packet::Publish {
-                topic,
-                payload,
-                qos,
-                packet_id,
-                properties,
-            } => {
+            Packet::Publish { topic, payload, qos, packet_id, properties } => {
                 if let (1, Some(id)) = (qos, packet_id) {
                     self.send(codec::encode_puback(id)).await?;
                 }
@@ -417,17 +412,9 @@ pub(crate) mod mock {
     impl MqttConnector for MockConnector {
         async fn connect(&self, target: &WsTarget) -> Result<Box<dyn PacketIo>, MqttError> {
             self.targets.lock().unwrap().push(target.clone());
-            let script = self
-                .scripts
-                .lock()
-                .unwrap()
-                .pop_front()
-                .ok_or_else(|| MqttError::Transport("no script".into()))?;
-            Ok(Box::new(MockIo {
-                inbound: script.into(),
-                sent: self.sent.clone(),
-                close_when_empty: false,
-            }))
+            let script =
+                self.scripts.lock().unwrap().pop_front().ok_or_else(|| MqttError::Transport("no script".into()))?;
+            Ok(Box::new(MockIo { inbound: script.into(), sent: self.sent.clone(), close_when_empty: false }))
         }
     }
 }
@@ -439,12 +426,7 @@ mod tests {
     use super::*;
 
     fn target() -> WsTarget {
-        WsTarget {
-            host: "mu.y.qq.com".into(),
-            port: 443,
-            path: "/ws/handshake".into(),
-            headers: vec![],
-        }
+        WsTarget { host: "mu.y.qq.com".into(), port: 443, path: "/ws/handshake".into(), headers: vec![] }
     }
 
     #[test]
@@ -496,10 +478,7 @@ mod tests {
     #[tokio::test]
     async fn follows_redirects_and_limits_them() {
         let connector = MockConnector::default();
-        let redirect = Properties {
-            server_reference: Some("srv:1".into()),
-            ..Default::default()
-        };
+        let redirect = Properties { server_reference: Some("srv:1".into()), ..Default::default() };
         connector.push_script(vec![encode_connack_for_test(0x9D, &redirect)]);
         connector.push_script(vec![encode_connack_for_test(0, &Properties::default())]);
         let session = MqttSession::connect(&connector, target(), &ConnectOptions::new("c")).await.unwrap();

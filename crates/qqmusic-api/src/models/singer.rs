@@ -658,7 +658,8 @@ mod tests {
         let brief: SingerBrief = from_value(&json!({"singer_mid": "m", "concernNum": 5})).unwrap();
         assert_eq!((brief.id, brief.area_id, brief.concern_num), (-1, -1, 5));
         assert!(brief.cover_url(CoverSize::S150).contains("M000m.jpg"));
-        let list: SingerTypeListResponse = from_value(&json!({"singerlist": [{"singer_id": 1}], "tags": {"area": null}})).unwrap();
+        let list: SingerTypeListResponse =
+            from_value(&json!({"singerlist": [{"singer_id": 1}], "tags": {"area": null}})).unwrap();
         assert_eq!((list.area, list.singerlist[0].id), (-100, 1));
         assert!(list.tags.area.is_empty());
     }
@@ -702,9 +703,11 @@ mod tests {
         assert_eq!(first.ex_info.genre, "");
         assert_eq!(first.ex_info.desc, "d");
         assert!(from_value::<SingerDetail>(&json!({})).is_err());
-        let similar: SimilarSingerResponse = from_value(&json!({"singerlist": [{"singerMid": "x", "pic_mid": "p"}], "errMsg": "ok"})).unwrap();
+        let similar: SimilarSingerResponse =
+            from_value(&json!({"singerlist": [{"singerMid": "x", "pic_mid": "p"}], "errMsg": "ok"})).unwrap();
         assert_eq!(similar.singerlist[0].pmid, "p");
-        let albums: SingerAlbumListResponse = from_value(&json!({"albumList": [{"albumMid": "a", "tags": null}]})).unwrap();
+        let albums: SingerAlbumListResponse =
+            from_value(&json!({"albumList": [{"albumMid": "a", "tags": null}]})).unwrap();
         assert!(albums.album_list[0].cover_url(CoverSize::S300).contains("T002"));
         let mvs: SingerMvListResponse = from_value(&json!({"total": 1, "list": [{"mvid": 2}]})).unwrap();
         assert_eq!(mvs.into_items()[0].id, 2);

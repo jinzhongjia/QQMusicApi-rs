@@ -39,10 +39,7 @@ impl Properties {
         K: Into<String>,
         V: Into<String>,
     {
-        Self {
-            user: pairs.into_iter().map(|(k, v)| (k.into(), v.into())).collect(),
-            ..Self::default()
-        }
+        Self { user: pairs.into_iter().map(|(k, v)| (k.into(), v.into())).collect(), ..Self::default() }
     }
 
     fn encode(&self) -> Vec<u8> {
@@ -331,46 +328,25 @@ fn decode_packet(first: u8, body: &[u8]) -> Result<Packet, MqttError> {
         2 => {
             let flags = reader.u8()?;
             let reason = reader.u8()?;
-            let properties = if reader.is_empty() {
-                Properties::default()
-            } else {
-                Properties::decode(&mut reader)?
-            };
-            Packet::ConnAck {
-                session_present: flags & 1 == 1,
-                reason,
-                properties,
-            }
+            let properties = if reader.is_empty() { Properties::default() } else { Properties::decode(&mut reader)? };
+            Packet::ConnAck { session_present: flags & 1 == 1, reason, properties }
         }
         3 => {
             let qos = (first >> 1) & 0x03;
             let topic = reader.string()?;
             let packet_id = if qos > 0 { Some(reader.u16()?) } else { None };
             let properties = Properties::decode(&mut reader)?;
-            Packet::Publish {
-                topic,
-                payload: reader.rest().to_vec(),
-                qos,
-                packet_id,
-                properties,
-            }
+            Packet::Publish { topic, payload: reader.rest().to_vec(), qos, packet_id, properties }
         }
         9 => {
             let packet_id = reader.u16()?;
             Properties::decode(&mut reader)?;
-            Packet::SubAck {
-                packet_id,
-                reason_codes: reader.rest().to_vec(),
-            }
+            Packet::SubAck { packet_id, reason_codes: reader.rest().to_vec() }
         }
         13 => Packet::PingResp,
         14 => {
             let reason = if reader.is_empty() { 0 } else { reader.u8()? };
-            let properties = if reader.is_empty() {
-                Properties::default()
-            } else {
-                Properties::decode(&mut reader)?
-            };
+            let properties = if reader.is_empty() { Properties::default() } else { Properties::decode(&mut reader)? };
             Packet::Disconnect { reason, properties }
         }
         other => Packet::Other(other),
@@ -394,7 +370,13 @@ pub(crate) fn encode_suback_for_test(packet_id: u16, codes: &[u8]) -> Vec<u8> {
 }
 
 #[cfg(test)]
-pub(crate) fn encode_publish_for_test(topic: &str, payload: &[u8], qos: u8, packet_id: Option<u16>, user: &[(&str, &str)]) -> Vec<u8> {
+pub(crate) fn encode_publish_for_test(
+    topic: &str,
+    payload: &[u8],
+    qos: u8,
+    packet_id: Option<u16>,
+    user: &[(&str, &str)],
+) -> Vec<u8> {
     let mut body = Vec::new();
     put_str(&mut body, topic);
     if let Some(id) = packet_id {
@@ -454,11 +436,7 @@ mod tests {
     fn decoder_handles_fragments_and_concatenation() {
         let mut stream = encode_connack_for_test(
             0,
-            &Properties {
-                server_keep_alive: Some(60),
-                reason_string: Some("ok".into()),
-                ..Properties::default()
-            },
+            &Properties { server_keep_alive: Some(60), reason_string: Some("ok".into()), ..Properties::default() },
         );
         stream.extend(encode_publish_for_test("t", b"hello", 0, None, &[("type", "cookies")]));
         stream.extend([0xD0, 0x00]);

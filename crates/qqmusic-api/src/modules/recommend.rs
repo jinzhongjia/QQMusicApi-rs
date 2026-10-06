@@ -17,7 +17,13 @@ api_module! {
 
 impl RecommendApi {
     /// Home feed (continuation pagination with shelf de-duplication).
-    pub fn get_home_feed(&self, page: i64, direction: i64, s_num: i64, v_cache: Vec<String>) -> Paged<RecommendFeedCardResponse> {
+    pub fn get_home_feed(
+        &self,
+        page: i64,
+        direction: i64,
+        s_num: i64,
+        v_cache: Vec<String>,
+    ) -> Paged<RecommendFeedCardResponse> {
         Paged::new(
             self.cgi(
                 "music.recommend.RecommendFeed",
@@ -31,10 +37,7 @@ impl RecommendApi {
                 let mut seen: Vec<String> = params["v_cache"]
                     .as_array()
                     .map(|items| {
-                        items
-                            .iter()
-                            .map(|v| v.as_str().map_or_else(|| v.to_string(), str::to_string))
-                            .collect()
+                        items.iter().map(|v| v.as_str().map_or_else(|| v.to_string(), str::to_string)).collect()
                     })
                     .unwrap_or_default();
                 for shelf in &r.shelves {
@@ -71,9 +74,7 @@ impl RecommendApi {
                 "GetRadarSong",
                 json!({"Page": page, "ReqType": 0, "FavSongs": [], "EntranceSongs": []}),
             ),
-            PageStrategy::new("Page")
-                .start_page(page)
-                .has_more(|r: &RadarRecommendResponse| Some(r.has_more)),
+            PageStrategy::new("Page").start_page(page).has_more(|r: &RadarRecommendResponse| Some(r.has_more)),
         )
     }
 

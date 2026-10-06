@@ -19,10 +19,7 @@ pub struct RateLimit {
 
 impl Default for RateLimit {
     fn default() -> Self {
-        Self {
-            rate: 10.0,
-            capacity: 50.0,
-        }
+        Self { rate: 10.0, capacity: 50.0 }
     }
 }
 
@@ -41,10 +38,7 @@ impl TokenBucket {
     /// Panics if `rate` or `capacity` is not positive.
     pub fn new(limit: RateLimit) -> Self {
         assert!(limit.rate > 0.0 && limit.capacity >= 1.0, "invalid rate limit");
-        Self {
-            limit,
-            state: Mutex::new((limit.capacity, Instant::now())),
-        }
+        Self { limit, state: Mutex::new((limit.capacity, Instant::now())) }
     }
 
     /// Wait for one token.
@@ -56,11 +50,7 @@ impl TokenBucket {
             state.0 = (state.0 + elapsed * self.limit.rate).min(self.limit.capacity);
             state.1 = now;
             state.0 -= 1.0;
-            if state.0 >= 0.0 {
-                None
-            } else {
-                Some(Duration::from_secs_f64(-state.0 / self.limit.rate))
-            }
+            if state.0 >= 0.0 { None } else { Some(Duration::from_secs_f64(-state.0 / self.limit.rate)) }
         };
         if let Some(wait) = wait {
             tokio::time::sleep(wait).await;

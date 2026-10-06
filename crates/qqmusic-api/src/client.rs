@@ -47,10 +47,7 @@ pub struct Endpoints {
 
 impl Default for Endpoints {
     fn default() -> Self {
-        Self {
-            musicu: MUSICU_URL.to_string(),
-            musics: MUSICS_URL.to_string(),
-        }
+        Self { musicu: MUSICU_URL.to_string(), musics: MUSICS_URL.to_string() }
     }
 }
 
@@ -161,10 +158,7 @@ impl ClientBuilder {
     /// Use a caller supplied device.
     #[must_use]
     pub fn device(mut self, device: Device) -> Self {
-        self.device = DeviceSource::Fixed {
-            device: Box::new(device),
-            cache_path: None,
-        };
+        self.device = DeviceSource::Fixed { device: Box::new(device), cache_path: None };
         self
     }
 
@@ -302,11 +296,9 @@ impl ClientBuilder {
             DeviceSource::Fixed { device, cache_path } => DeviceStore::fixed(*device, cache_path),
         });
         let qimei = match &self.qimei {
-            QimeiMode::Auto => Some(QimeiProvider::new(
-                Arc::clone(&devices),
-                self.policy.android.clone(),
-                Arc::clone(&transport),
-            )),
+            QimeiMode::Auto => {
+                Some(QimeiProvider::new(Arc::clone(&devices), self.policy.android.clone(), Arc::clone(&transport)))
+            }
             QimeiMode::Fixed(_) | QimeiMode::Disabled => None,
         };
         let inner = Inner {
@@ -326,9 +318,7 @@ impl ClientBuilder {
             batch_size: self.batch_size,
             mqtt_connector: self.mqtt_connector.or_else(default_mqtt_connector),
         };
-        Ok(Client {
-            inner: Arc::new(inner),
-        })
+        Ok(Client { inner: Arc::new(inner) })
     }
 }
 
@@ -361,15 +351,11 @@ fn default_mqtt_connector() -> Option<Arc<dyn crate::mqtt::MqttConnector>> {
 }
 
 fn read<T: Clone>(lock: &RwLock<T>) -> T {
-    lock.read()
-        .unwrap_or_else(std::sync::PoisonError::into_inner)
-        .clone()
+    lock.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone()
 }
 
 fn write<T>(lock: &RwLock<T>, value: T) {
-    *lock
-        .write()
-        .unwrap_or_else(std::sync::PoisonError::into_inner) = value;
+    *lock.write().unwrap_or_else(std::sync::PoisonError::into_inner) = value;
 }
 
 impl Inner {
@@ -567,11 +553,7 @@ impl Client {
         I: IntoIterator<Item = CgiRequest<T>>,
     {
         let specs = requests.into_iter().map(CgiRequest::into_spec).collect();
-        self.execute_cgi(specs, None)
-            .await
-            .into_iter()
-            .map(|r| r.and_then(|value| Ok(T::from_json(&value)?)))
-            .collect()
+        self.execute_cgi(specs, None).await.into_iter().map(|r| r.and_then(|value| Ok(T::from_json(&value)?))).collect()
     }
 
     /// Open a streaming HTTP request (e.g. to download audio).
@@ -588,10 +570,7 @@ impl Client {
     }
 
     pub(crate) async fn execute_cgi_one(&self, spec: CgiSpec) -> Result<Value> {
-        self.execute_cgi(vec![spec], Some(1))
-            .await
-            .pop()
-            .unwrap_or_else(|| Err(Error::api_data("缺少请求结果")))
+        self.execute_cgi(vec![spec], Some(1)).await.pop().unwrap_or_else(|| Err(Error::api_data("缺少请求结果")))
     }
 
     /// Execute CGI specs, merging compatible ones into shared requests.
@@ -605,9 +584,7 @@ impl Client {
         for (index, spec) in specs.into_iter().enumerate() {
             let credential = spec.credential.clone().unwrap_or_else(|| default_credential.clone());
             if spec.require_login && !credential.is_valid() {
-                results[index] = Some(Err(Error::CredentialInvalid(
-                    "请求需要登录, 未提供有效的登录凭证".into(),
-                )));
+                results[index] = Some(Err(Error::CredentialInvalid("请求需要登录, 未提供有效的登录凭证".into())));
                 continue;
             }
             let key = GroupKey {
@@ -650,10 +627,7 @@ impl Client {
                 }
             }
         }
-        results
-            .into_iter()
-            .map(|r| r.unwrap_or_else(|| Err(Error::api_data("缺少请求结果"))))
-            .collect()
+        results.into_iter().map(|r| r.unwrap_or_else(|| Err(Error::api_data("缺少请求结果")))).collect()
     }
 
     async fn run_batch(&self, key: &GroupKey, items: &[(usize, CgiSpec)]) -> Result<Vec<Result<Value>>> {
@@ -665,9 +639,7 @@ impl Client {
             .zip(raw_items)
             .enumerate()
             .map(|(position, ((_, spec), raw))| match raw {
-                None => Err(Error::api_data(format!(
-                    "CGI 响应格式异常, 缺少或畸形子响应 req_{position}"
-                ))),
+                None => Err(Error::api_data(format!("CGI 响应格式异常, 缺少或畸形子响应 req_{position}"))),
                 Some(raw) => parse_cgi_item(raw, spec.allow_error_codes.as_ref(), spec.parse_on_allow),
             })
             .collect())
@@ -675,28 +647,19 @@ impl Client {
 
     /// Build the HTTP request for a batch.
     async fn prepare_cgi(&self, key: &GroupKey, items: &[(usize, CgiSpec)]) -> Result<Request> {
-        let base = &items
-            .first()
-            .ok_or_else(|| Error::invalid_argument("CGI 批次不能为空"))?
-            .1;
+        let base = &items.first().ok_or_else(|| Error::invalid_argument("CGI 批次不能为空"))?.1;
         let device = self.inner.devices.get().await?;
         let policy = self.inner.policy();
         let bypass = self.bypass();
         let use_bypass = key.bypass && bypass.enabled;
         let comm: IndexMap<String, String> = if use_bypass {
             let mut comm = bypass.comm(&device.open_udid, &key.credential);
-            let overrides: IndexMap<String, String> = base
-                .comm
-                .iter()
-                .map(|(k, v)| (k.clone(), v.clone().unwrap_or_default()))
-                .collect();
+            let overrides: IndexMap<String, String> =
+                base.comm.iter().map(|(k, v)| (k.clone(), v.clone().unwrap_or_default())).collect();
             crate::versioning::apply_comm_overrides(&mut comm, &overrides);
             comm
         } else if base.override_comm {
-            base.comm
-                .iter()
-                .filter_map(|(k, v)| v.as_ref().map(|v| (k.clone(), v.clone())))
-                .collect()
+            base.comm.iter().filter_map(|(k, v)| v.as_ref().map(|v| (k.clone(), v.clone()))).collect()
         } else {
             let (session, qimei) = if key.platform == Platform::Android {
                 (self.inner.android_session().await, self.inner.cached_qimei().await)
@@ -727,16 +690,9 @@ impl Client {
         };
 
         let mut payload = Map::new();
-        payload.insert(
-            "comm".into(),
-            Value::Object(comm.into_iter().map(|(k, v)| (k, Value::String(v))).collect()),
-        );
+        payload.insert("comm".into(), Value::Object(comm.into_iter().map(|(k, v)| (k, Value::String(v))).collect()));
         for (idx, (_, spec)) in items.iter().enumerate() {
-            let mut param = if spec.preserve_bool {
-                spec.param.clone()
-            } else {
-                bool_to_int(&spec.param)
-            };
+            let mut param = if spec.preserve_bool { spec.param.clone() } else { bool_to_int(&spec.param) };
             if use_bypass && let Some(guid) = param.get_mut("guid") {
                 *guid = Value::String(device.open_udid.clone());
             }
@@ -750,19 +706,13 @@ impl Client {
 
         let mut request = if key.sign {
             let mut request = Request::new(Method::Post, self.inner.endpoints.musics.clone());
-            request.query = vec![
-                ("_".into(), now_millis().to_string()),
-                ("sign".into(), zzc_sign(&body)),
-            ];
+            request.query = vec![("_".into(), now_millis().to_string()), ("sign".into(), zzc_sign(&body))];
             request
         } else {
             Request::new(Method::Post, self.inner.endpoints.musicu.clone())
         };
         let user_agent = if use_bypass {
-            bypass
-                .user_agent
-                .clone()
-                .unwrap_or_else(|| policy.user_agent(Platform::Web, &device))
+            bypass.user_agent.clone().unwrap_or_else(|| policy.user_agent(Platform::Web, &device))
         } else {
             policy.user_agent(key.platform, &device)
         };
@@ -792,11 +742,7 @@ impl Client {
         request.timeout = spec.timeout;
         request.follow_redirects = spec.follow_redirects;
         if !cookies.is_empty() {
-            let mut value = cookies
-                .iter()
-                .map(|(k, v)| format!("{k}={v}"))
-                .collect::<Vec<_>>()
-                .join("; ");
+            let mut value = cookies.iter().map(|(k, v)| format!("{k}={v}")).collect::<Vec<_>>().join("; ");
             if let Some(existing) = request.header("cookie") {
                 value = format!("{existing}; {value}");
             }
@@ -850,11 +796,7 @@ mod tests {
     async fn single_request_payload() {
         let mock = MockTransport::with_handler(echo_ok);
         let client = client(&mock);
-        let value: Value = client
-            .cgi("mod", "meth", json!({"flag": true, "n": 1}))
-            .send()
-            .await
-            .unwrap();
+        let value: Value = client.cgi("mod", "meth", json!({"flag": true, "n": 1})).send().await.unwrap();
         assert_eq!(value["echo"]["module"], "mod");
         assert_eq!(value["echo"]["param"]["flag"], 1);
         let request = mock.last_request().unwrap();
@@ -894,12 +836,7 @@ mod tests {
     async fn override_comm_replaces_everything() {
         let mock = MockTransport::with_handler(echo_ok);
         let client = client(&mock);
-        let _: Value = client
-            .cgi("m", "x", json!({}))
-            .override_comm([("ct", "5"), ("cv", "0")])
-            .send()
-            .await
-            .unwrap();
+        let _: Value = client.cgi("m", "x", json!({})).override_comm([("ct", "5"), ("cv", "0")]).send().await.unwrap();
         let body = mock.last_request().unwrap().json_body().unwrap();
         assert_eq!(body["comm"], json!({"ct": "5", "cv": "0"}));
     }
@@ -931,9 +868,7 @@ mod tests {
         for (i, result) in results.iter().enumerate().skip(1) {
             assert_eq!(result.as_ref().unwrap()["echo"]["param"]["i"], i - 1);
         }
-        let gathered = client
-            .gather((0..3).map(|i| client.cgi::<Value>("m", "x", json!({"i": i}))))
-            .await;
+        let gathered = client.gather((0..3).map(|i| client.cgi::<Value>("m", "x", json!({"i": i})))).await;
         assert_eq!(gathered.len(), 3);
         assert_eq!(gathered[2].as_ref().unwrap()["echo"]["param"]["i"], 2);
     }
@@ -991,11 +926,8 @@ mod tests {
         assert_eq!(body["comm"]["qq"], "7");
         assert_eq!(body["comm"]["tmeLoginType"], "1");
 
-        let value: Value = client
-            .http(HttpSpec::new(Method::Get, "https://example.com/a").cookie("extra", "1"))
-            .send()
-            .await
-            .unwrap();
+        let value: Value =
+            client.http(HttpSpec::new(Method::Get, "https://example.com/a").cookie("extra", "1")).send().await.unwrap();
         assert_eq!(value, json!({"ok": 1}));
         let request = mock.last_request().unwrap();
         let cookies = request.cookies();
@@ -1016,11 +948,8 @@ mod tests {
         assert_eq!(text, "plain text");
         let err = client.http::<Value>(HttpSpec::new(Method::Get, "u")).send().await.unwrap_err();
         assert!(matches!(err, Error::Http { status: 500, .. }));
-        let raw: crate::response::RawPayload = client
-            .http(HttpSpec::new(Method::Get, "u").header("User-Agent", "custom"))
-            .send()
-            .await
-            .unwrap();
+        let raw: crate::response::RawPayload =
+            client.http(HttpSpec::new(Method::Get, "u").header("User-Agent", "custom")).send().await.unwrap();
         assert_eq!(raw.cookies["a"], "b");
         assert_eq!(mock.last_request().unwrap().header("user-agent"), Some("custom"));
     }
@@ -1050,10 +979,7 @@ mod tests {
     async fn android_session_is_fetched_once_and_used() {
         let mock = MockTransport::new();
         mock.route(
-            |req| {
-                req.json_body()
-                    .is_some_and(|b| b["req_0"]["module"] == "music.getSession.session")
-            },
+            |req| req.json_body().is_some_and(|b| b["req_0"]["module"] == "music.getSession.session"),
             |_| {
                 Ok(Response::json(&json!({
                     "code": 0,
@@ -1062,12 +988,8 @@ mod tests {
             },
         );
         mock.route_url("musicu", echo_ok);
-        let client = Client::builder()
-            .transport(mock.clone())
-            .qimei(QimeiMode::Disabled)
-            .rate_limit(None)
-            .build()
-            .unwrap();
+        let client =
+            Client::builder().transport(mock.clone()).qimei(QimeiMode::Disabled).rate_limit(None).build().unwrap();
         for _ in 0..2 {
             let _: Value = client.cgi("m", "x", json!({})).send().await.unwrap();
         }
@@ -1083,18 +1005,11 @@ mod tests {
     async fn android_session_failure_is_not_fatal() {
         let mock = MockTransport::new();
         mock.route(
-            |req| {
-                req.json_body()
-                    .is_some_and(|b| b["req_0"]["module"] == "music.getSession.session")
-            },
+            |req| req.json_body().is_some_and(|b| b["req_0"]["module"] == "music.getSession.session"),
             |_| Ok(Response::new(500, "")),
         );
         mock.route_url("musicu", echo_ok);
-        let client = Client::builder()
-            .transport(mock.clone())
-            .qimei(QimeiMode::Disabled)
-            .build()
-            .unwrap();
+        let client = Client::builder().transport(mock.clone()).qimei(QimeiMode::Disabled).build().unwrap();
         let value: Value = client.cgi("m", "x", json!({})).send().await.unwrap();
         assert_eq!(value["echo"]["module"], "m");
     }

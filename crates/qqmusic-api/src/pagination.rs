@@ -84,14 +84,7 @@ pub struct PageStrategy<T> {
 impl<T> PageStrategy<T> {
     /// Strategy using `page_key`, starting at page 1.
     pub fn new(page_key: impl Into<String>) -> Self {
-        Self {
-            page_key: page_key.into(),
-            start_page: 1,
-            page_size: None,
-            has_more: None,
-            total: None,
-            count: None,
-        }
+        Self { page_key: page_key.into(), start_page: 1, page_size: None, has_more: None, total: None, count: None }
     }
 
     /// First page number.
@@ -261,9 +254,9 @@ impl<T> OffsetStrategy<T> {
     fn current_offset(&self, params: &Value) -> Result<i64> {
         match params.get(&self.offset_key) {
             None => Ok(self.start_offset),
-            Some(value) => value
-                .as_i64()
-                .ok_or_else(|| Error::invalid_argument("分页请求缺少有效的 offset 参数, 无法计算下一页")),
+            Some(value) => {
+                value.as_i64().ok_or_else(|| Error::invalid_argument("分页请求缺少有效的 offset 参数, 无法计算下一页"))
+            }
         }
     }
 
@@ -409,10 +402,7 @@ pub struct Paged<T> {
 
 impl<T> Clone for Paged<T> {
     fn clone(&self) -> Self {
-        Self {
-            request: self.request.clone(),
-            strategy: Arc::clone(&self.strategy),
-        }
+        Self { request: self.request.clone(), strategy: Arc::clone(&self.strategy) }
     }
 }
 
@@ -425,10 +415,7 @@ impl<T> std::fmt::Debug for Paged<T> {
 impl<T: FromJson + Send + 'static> Paged<T> {
     /// Wrap a request.
     pub fn new(request: CgiRequest<T>, strategy: impl PagerStrategy<T>) -> Self {
-        Self {
-            request,
-            strategy: Arc::new(strategy),
-        }
+        Self { request, strategy: Arc::new(strategy) }
     }
 
     /// The first page request.
@@ -449,12 +436,7 @@ impl<T: FromJson + Send + 'static> Paged<T> {
 
     /// Page iterator (`limit` = maximum number of pages).
     pub fn pager(self, limit: Option<usize>) -> Pager<T> {
-        Pager {
-            next: Some(self.request),
-            strategy: self.strategy,
-            limit,
-            yielded: 0,
-        }
+        Pager { next: Some(self.request), strategy: self.strategy, limit, yielded: 0 }
     }
 
     /// Stream of pages.
@@ -518,10 +500,7 @@ pub struct Pager<T> {
 
 impl<T> std::fmt::Debug for Pager<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Pager")
-            .field("yielded", &self.yielded)
-            .field("limit", &self.limit)
-            .finish_non_exhaustive()
+        f.debug_struct("Pager").field("yielded", &self.yielded).field("limit", &self.limit).finish_non_exhaustive()
     }
 }
 
@@ -576,25 +555,31 @@ mod tests {
     }
 
     fn page() -> PageStrategy<Resp> {
-        PageStrategy::new("page")
-            .has_more(|r: &Resp| r.has_more)
-            .total(|r: &Resp| r.total)
-            .count(|r: &Resp| r.count)
+        PageStrategy::new("page").has_more(|r: &Resp| r.has_more).total(|r: &Resp| r.total).count(|r: &Resp| r.count)
     }
 
     #[test]
     fn page_strategy_rules() {
         let strategy = page().page_size(10);
         let params = json!({"page": 1, "q": "x"});
-        let next = strategy
-            .next_params(&params, &Resp { has_more: Some(true), ..Resp::default() })
-            .unwrap()
-            .unwrap();
+        let next = strategy.next_params(&params, &Resp { has_more: Some(true), ..Resp::default() }).unwrap().unwrap();
         assert_eq!(next, json!({"page": 2, "q": "x"}));
-        assert!(strategy.next_params(&params, &Resp { has_more: Some(false), total: Some(100), ..Resp::default() }).unwrap().is_none());
+        assert!(
+            strategy
+                .next_params(&params, &Resp { has_more: Some(false), total: Some(100), ..Resp::default() })
+                .unwrap()
+                .is_none()
+        );
         // total based
-        assert!(strategy.next_params(&json!({"page": 9}), &Resp { total: Some(100), ..Resp::default() }).unwrap().is_some());
-        assert!(strategy.next_params(&json!({"page": 10}), &Resp { total: Some(100), ..Resp::default() }).unwrap().is_none());
+        assert!(
+            strategy.next_params(&json!({"page": 9}), &Resp { total: Some(100), ..Resp::default() }).unwrap().is_some()
+        );
+        assert!(
+            strategy
+                .next_params(&json!({"page": 10}), &Resp { total: Some(100), ..Resp::default() })
+                .unwrap()
+                .is_none()
+        );
         // count based
         assert!(strategy.next_params(&params, &Resp { count: Some(10), ..Resp::default() }).unwrap().is_some());
         assert!(strategy.next_params(&params, &Resp { count: Some(9), ..Resp::default() }).unwrap().is_none());
@@ -607,8 +592,12 @@ mod tests {
         assert!(no_size.next_params(&params, &Resp { count: Some(1), ..Resp::default() }).unwrap().is_some());
         assert!(no_size.next_params(&params, &Resp { count: Some(0), ..Resp::default() }).unwrap().is_none());
         let zero_based = PageStrategy::<Resp>::new("p").start_page(0).page_size(5).total(|r: &Resp| r.total);
-        assert!(zero_based.next_params(&json!({"p": 0}), &Resp { total: Some(6), ..Resp::default() }).unwrap().is_some());
-        assert!(zero_based.next_params(&json!({"p": 1}), &Resp { total: Some(6), ..Resp::default() }).unwrap().is_none());
+        assert!(
+            zero_based.next_params(&json!({"p": 0}), &Resp { total: Some(6), ..Resp::default() }).unwrap().is_some()
+        );
+        assert!(
+            zero_based.next_params(&json!({"p": 1}), &Resp { total: Some(6), ..Resp::default() }).unwrap().is_none()
+        );
     }
 
     #[test]
@@ -622,13 +611,33 @@ mod tests {
         assert_eq!(next.unwrap()["begin"], 10);
         let next = strategy.next_params(&params, &Resp { total: Some(25), count: Some(4), ..Resp::default() }).unwrap();
         assert_eq!(next.unwrap()["begin"], 4);
-        assert!(strategy.next_params(&json!({"begin": 20, "num": 10}), &Resp { total: Some(25), count: Some(5), ..Resp::default() }).unwrap().is_none());
-        assert!(strategy.next_params(&params, &Resp { total: Some(25), count: Some(0), ..Resp::default() }).unwrap().is_none());
+        assert!(
+            strategy
+                .next_params(
+                    &json!({"begin": 20, "num": 10}),
+                    &Resp { total: Some(25), count: Some(5), ..Resp::default() }
+                )
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            strategy
+                .next_params(&params, &Resp { total: Some(25), count: Some(0), ..Resp::default() })
+                .unwrap()
+                .is_none()
+        );
         assert!(strategy.next_params(&params, &Resp { count: Some(10), ..Resp::default() }).unwrap().is_some());
         assert!(strategy.next_params(&params, &Resp { count: Some(3), ..Resp::default() }).unwrap().is_none());
-        assert!(strategy.next_params(&params, &Resp { has_more: Some(false), total: Some(100), ..Resp::default() }).unwrap().is_none());
+        assert!(
+            strategy
+                .next_params(&params, &Resp { has_more: Some(false), total: Some(100), ..Resp::default() })
+                .unwrap()
+                .is_none()
+        );
         // has_more true but zero step -> error
-        assert!(strategy.next_params(&params, &Resp { has_more: Some(true), count: Some(0), ..Resp::default() }).is_err());
+        assert!(
+            strategy.next_params(&params, &Resp { has_more: Some(true), count: Some(0), ..Resp::default() }).is_err()
+        );
         // missing page size
         assert!(strategy.next_params(&json!({"begin": 0}), &Resp { count: Some(3), ..Resp::default() }).is_err());
         let fixed = OffsetStrategy::<Resp>::with_size("offset", 20).start_offset(5).has_more(|r: &Resp| r.has_more);
@@ -646,21 +655,45 @@ mod tests {
         let params = json!({"cursor": "a"});
         let next = strategy.next_params(&params, &Resp { cursor: Some(json!("b")), ..Resp::default() }).unwrap();
         assert_eq!(next.unwrap()["cursor"], "b");
-        assert!(strategy.next_params(&params, &Resp { cursor: Some(json!("a")), ..Resp::default() }).unwrap().is_none());
+        assert!(
+            strategy.next_params(&params, &Resp { cursor: Some(json!("a")), ..Resp::default() }).unwrap().is_none()
+        );
         assert!(strategy.next_params(&params, &Resp { cursor: None, ..Resp::default() }).unwrap().is_none());
-        assert!(strategy.next_params(&params, &Resp { cursor: Some(Value::Null), ..Resp::default() }).unwrap().is_none());
-        assert!(strategy.next_params(&params, &Resp { has_more: Some(false), cursor: Some(json!("b")), ..Resp::default() }).unwrap().is_none());
-        assert!(strategy.next_params(&params, &Resp { count: Some(3), cursor: Some(json!("b")), ..Resp::default() }).unwrap().is_none());
-        assert!(strategy.next_params(&params, &Resp { count: Some(10), cursor: Some(json!("b")), ..Resp::default() }).unwrap().is_some());
+        assert!(
+            strategy.next_params(&params, &Resp { cursor: Some(Value::Null), ..Resp::default() }).unwrap().is_none()
+        );
+        assert!(
+            strategy
+                .next_params(&params, &Resp { has_more: Some(false), cursor: Some(json!("b")), ..Resp::default() })
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            strategy
+                .next_params(&params, &Resp { count: Some(3), cursor: Some(json!("b")), ..Resp::default() })
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            strategy
+                .next_params(&params, &Resp { count: Some(10), cursor: Some(json!("b")), ..Resp::default() })
+                .unwrap()
+                .is_some()
+        );
         let repeat = CursorStrategy::new("cursor", |r: &Resp| r.cursor.clone()).allow_repeat(true);
         assert!(repeat.next_params(&params, &Resp { cursor: Some(json!("a")), ..Resp::default() }).unwrap().is_some());
         let zero = CursorStrategy::new("c", |r: &Resp| r.cursor.clone()).count(|r: &Resp| r.count);
-        assert!(zero.next_params(&json!({}), &Resp { count: Some(0), cursor: Some(json!(1)), ..Resp::default() }).unwrap().is_none());
+        assert!(
+            zero.next_params(&json!({}), &Resp { count: Some(0), cursor: Some(json!(1)), ..Resp::default() })
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[test]
     fn fn_strategy_and_with_param() {
-        let strategy = FnStrategy(|params: &Value, r: &Resp| r.has_more.filter(|m| *m).map(|_| with_param(params, "x", json!(1))));
+        let strategy =
+            FnStrategy(|params: &Value, r: &Resp| r.has_more.filter(|m| *m).map(|_| with_param(params, "x", json!(1))));
         assert_eq!(
             strategy.next_params(&json!({"a": 1}), &Resp { has_more: Some(true), ..Resp::default() }).unwrap(),
             Some(json!({"a": 1, "x": 1}))

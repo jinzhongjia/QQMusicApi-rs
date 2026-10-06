@@ -53,29 +53,17 @@ pub struct JsonError {
 impl JsonError {
     /// Missing required field.
     pub fn missing(field: impl Into<String>) -> Self {
-        Self {
-            path: Vec::new(),
-            kind: JsonErrorKind::Missing(field.into()),
-        }
+        Self { path: Vec::new(), kind: JsonErrorKind::Missing(field.into()) }
     }
 
     /// Invalid JSON type.
     pub fn invalid_type(expected: &'static str, found: &Value) -> Self {
-        Self {
-            path: Vec::new(),
-            kind: JsonErrorKind::InvalidType {
-                expected,
-                found: describe(found),
-            },
-        }
+        Self { path: Vec::new(), kind: JsonErrorKind::InvalidType { expected, found: describe(found) } }
     }
 
     /// Custom error message.
     pub fn custom(message: impl fmt::Display) -> Self {
-        Self {
-            path: Vec::new(),
-            kind: JsonErrorKind::Custom(message.to_string()),
-        }
+        Self { path: Vec::new(), kind: JsonErrorKind::Custom(message.to_string()) }
     }
 
     /// Prefix the error path with an object key.
@@ -324,11 +312,7 @@ impl FromJson for Map<String, Value> {
 
 impl<T: FromJson> FromJson for Option<T> {
     fn from_json(value: &Value) -> Result<Self, JsonError> {
-        if value.is_null() {
-            Ok(None)
-        } else {
-            T::from_json(value).map(Some)
-        }
+        if value.is_null() { Ok(None) } else { T::from_json(value).map(Some) }
     }
 
     fn from_missing() -> Option<Self> {
@@ -379,9 +363,7 @@ macro_rules! impl_map {
                     Value::Object(map) => map
                         .iter()
                         .map(|(key, item)| {
-                            T::from_json(item)
-                                .map(|parsed| (key.clone(), parsed))
-                                .map_err(|e| e.with_field(key))
+                            T::from_json(item).map(|parsed| (key.clone(), parsed)).map_err(|e| e.with_field(key))
                         })
                         .collect(),
                     _ => Err(JsonError::invalid_type("object", value)),
@@ -405,10 +387,7 @@ pub mod __private {
     use super::{Cow, JsonError, Map, Value, path};
 
     /// Ensure the value is an object.
-    pub fn expect_object<'a>(
-        value: &'a Value,
-        _model: &'static str,
-    ) -> Result<&'a Map<String, Value>, JsonError> {
+    pub fn expect_object<'a>(value: &'a Value, _model: &'static str) -> Result<&'a Map<String, Value>, JsonError> {
         match value {
             Value::Object(map) => Ok(map),
             _ => Err(JsonError::invalid_type("object", value)),
@@ -430,10 +409,7 @@ pub mod __private {
         {
             return Some(found);
         }
-        keys.iter()
-            .filter_map(|key| object.get(*key))
-            .find(|value| !value.is_null())
-            .map(Cow::Borrowed)
+        keys.iter().filter_map(|key| object.get(*key)).find(|value| !value.is_null()).map(Cow::Borrowed)
     }
 }
 
@@ -515,9 +491,7 @@ mod tests {
 
     #[test]
     fn error_display_contains_path() {
-        let err = JsonError::invalid_type("i64", &json!("x"))
-            .with_index(2)
-            .with_field("songs");
+        let err = JsonError::invalid_type("i64", &json!("x")).with_index(2).with_field("songs");
         assert_eq!(err.path_string(), "$.songs[2]");
         assert!(err.to_string().contains("expected i64"));
         assert!(JsonError::missing("id").to_string().contains("`id`"));

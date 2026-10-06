@@ -315,11 +315,7 @@ impl Song {
 
     /// Singer names joined with `/`.
     pub fn singer_names(&self) -> String {
-        self.singer
-            .iter()
-            .map(|s| s.name.as_str())
-            .collect::<Vec<_>>()
-            .join("/")
+        self.singer.iter().map(|s| s.name.as_str()).collect::<Vec<_>>().join("/")
     }
 }
 
@@ -331,7 +327,8 @@ mod tests {
 
     #[test]
     fn singer_aliases_and_cover() {
-        let singer: Singer = from_value(&json!({"singerID": 4558, "singerMid": "0025NhlN2yWrP4", "singerName": "周杰伦"})).unwrap();
+        let singer: Singer =
+            from_value(&json!({"singerID": 4558, "singerMid": "0025NhlN2yWrP4", "singerName": "周杰伦"})).unwrap();
         assert_eq!(singer.id, 4558);
         assert_eq!(singer.name, "周杰伦");
         assert_eq!(singer.title, "周杰伦");

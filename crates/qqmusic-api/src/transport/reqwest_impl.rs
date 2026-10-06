@@ -94,8 +94,8 @@ fn build_client(config: &TransportConfig, follow: bool) -> Result<reqwest::Clien
         builder = builder.tls_danger_accept_invalid_certs(true);
     }
     if let Some(proxy) = &config.proxy {
-        let proxy = reqwest::Proxy::all(proxy)
-            .map_err(|e| Error::invalid_argument(format!("invalid proxy {proxy}: {e}")))?;
+        let proxy =
+            reqwest::Proxy::all(proxy).map_err(|e| Error::invalid_argument(format!("invalid proxy {proxy}: {e}")))?;
         builder = builder.proxy(proxy);
     }
     for (host, addr) in &config.resolve {
@@ -104,9 +104,7 @@ fn build_client(config: &TransportConfig, follow: bool) -> Result<reqwest::Clien
     if let Some(addr) = config.local_address {
         builder = builder.local_address(addr);
     }
-    builder
-        .build()
-        .map_err(|e| Error::invalid_argument(format!("failed to build HTTP client: {e}")))
+    builder.build().map_err(|e| Error::invalid_argument(format!("failed to build HTTP client: {e}")))
 }
 
 fn map_error(err: reqwest::Error) -> TransportError {
@@ -132,14 +130,7 @@ fn convert_method(method: Method) -> reqwest::Method {
 }
 
 fn collect_headers(map: &reqwest::header::HeaderMap) -> Vec<(String, String)> {
-    map.iter()
-        .map(|(k, v)| {
-            (
-                k.as_str().to_string(),
-                String::from_utf8_lossy(v.as_bytes()).into_owned(),
-            )
-        })
-        .collect()
+    map.iter().map(|(k, v)| (k.as_str().to_string(), String::from_utf8_lossy(v.as_bytes()).into_owned())).collect()
 }
 
 impl ReqwestTransport {
@@ -157,20 +148,11 @@ impl ReqwestTransport {
     ///
     /// `no_follow` must be configured with `redirect::Policy::none()`.
     pub fn from_clients(follow: reqwest::Client, no_follow: reqwest::Client) -> Self {
-        Self {
-            follow,
-            no_follow,
-            connect_retries: 0,
-            retry_backoff: Duration::ZERO,
-        }
+        Self { follow, no_follow, connect_retries: 0, retry_backoff: Duration::ZERO }
     }
 
     fn build(&self, request: &Request) -> reqwest::RequestBuilder {
-        let client = if request.follow_redirects {
-            &self.follow
-        } else {
-            &self.no_follow
-        };
+        let client = if request.follow_redirects { &self.follow } else { &self.no_follow };
         let mut builder = client.request(convert_method(request.method), request.full_url());
         for (name, value) in &request.headers {
             builder = builder.header(name.as_str(), value.as_str());
@@ -212,12 +194,7 @@ impl Transport for ReqwestTransport {
         let url = response.url().to_string();
         let headers = collect_headers(response.headers());
         let body = response.bytes().await.map_err(map_error)?.to_vec();
-        Ok(Response {
-            status,
-            url,
-            headers,
-            body,
-        })
+        Ok(Response { status, url, headers, body })
     }
 
     async fn send_streaming(&self, request: Request) -> Result<StreamingResponse, TransportError> {
@@ -226,10 +203,7 @@ impl Transport for ReqwestTransport {
             status: response.status().as_u16(),
             url: response.url().to_string(),
             headers: collect_headers(response.headers()),
-            body: response
-                .bytes_stream()
-                .map(|chunk| chunk.map(|b| b.to_vec()).map_err(map_error))
-                .boxed(),
+            body: response.bytes_stream().map(|chunk| chunk.map(|b| b.to_vec()).map_err(map_error)).boxed(),
         })
     }
 }
@@ -253,15 +227,10 @@ mod tests {
 
     #[test]
     fn rejects_invalid_config() {
-        let bad_header = TransportConfig {
-            default_headers: vec![("bad header".into(), "x".into())],
-            ..TransportConfig::default()
-        };
+        let bad_header =
+            TransportConfig { default_headers: vec![("bad header".into(), "x".into())], ..TransportConfig::default() };
         assert!(ReqwestTransport::new(&bad_header).is_err());
-        let bad_proxy = TransportConfig {
-            proxy: Some("::not a url".into()),
-            ..TransportConfig::default()
-        };
+        let bad_proxy = TransportConfig { proxy: Some("::not a url".into()), ..TransportConfig::default() };
         assert!(ReqwestTransport::new(&bad_proxy).is_err());
     }
 
@@ -275,10 +244,7 @@ mod tests {
         };
         let transport = ReqwestTransport::new(&config).unwrap();
         // Port 9 (discard) on localhost is almost always closed.
-        let err = transport
-            .send(Request::new(Method::Get, "http://127.0.0.1:9/"))
-            .await
-            .unwrap_err();
+        let err = transport.send(Request::new(Method::Get, "http://127.0.0.1:9/")).await.unwrap_err();
         assert!(err.connect || err.timeout, "{err:?}");
     }
 }

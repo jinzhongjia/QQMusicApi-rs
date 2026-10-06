@@ -6,9 +6,8 @@ use sha1::{Digest, Sha1};
 
 const PART_1_INDEXES: [usize; 7] = [23, 14, 6, 36, 16, 7, 19];
 const PART_2_INDEXES: [usize; 8] = [16, 1, 32, 12, 19, 27, 8, 5];
-const SCRAMBLE_VALUES: [u8; 20] = [
-    89, 39, 179, 150, 218, 82, 58, 252, 177, 52, 186, 123, 120, 64, 242, 133, 143, 161, 121, 179,
-];
+const SCRAMBLE_VALUES: [u8; 20] =
+    [89, 39, 179, 150, 218, 82, 58, 252, 177, 52, 186, 123, 120, 64, 242, 133, 143, 161, 121, 179];
 
 /// Compute the `zzc` signature for a request payload.
 ///
@@ -18,24 +17,14 @@ pub fn zzc_sign(payload: impl AsRef<[u8]>) -> String {
     let hash_hex = hex::encode_upper(digest);
     let hex_bytes = hash_hex.as_bytes();
 
-    let part1: String = PART_1_INDEXES
-        .iter()
-        .map(|&i| char::from(hex_bytes[i]))
-        .collect();
-    let part2: String = PART_2_INDEXES
-        .iter()
-        .map(|&i| char::from(hex_bytes[i]))
-        .collect();
+    let part1: String = PART_1_INDEXES.iter().map(|&i| char::from(hex_bytes[i])).collect();
+    let part2: String = PART_2_INDEXES.iter().map(|&i| char::from(hex_bytes[i])).collect();
 
     let mut part3 = [0u8; 20];
     for (i, (slot, scramble)) in part3.iter_mut().zip(SCRAMBLE_VALUES).enumerate() {
         *slot = scramble ^ digest[i];
     }
-    let b64: String = STANDARD
-        .encode(part3)
-        .chars()
-        .filter(|c| !matches!(c, '\\' | '/' | '+' | '='))
-        .collect();
+    let b64: String = STANDARD.encode(part3).chars().filter(|c| !matches!(c, '\\' | '/' | '+' | '=')).collect();
 
     format!("zzc{part1}{b64}{part2}").to_lowercase()
 }

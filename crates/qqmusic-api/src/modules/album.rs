@@ -16,11 +16,7 @@ api_module! {
 impl AlbumApi {
     /// Album detail.
     pub fn get_detail(&self, album: impl Into<IdOrMid>) -> CgiRequest<GetAlbumDetailResponse> {
-        self.cgi(
-            "music.musichallAlbum.AlbumInfoServer",
-            "GetAlbumDetail",
-            album.into().param("albumId", "albumMId"),
-        )
+        self.cgi("music.musichallAlbum.AlbumInfoServer", "GetAlbumDetail", album.into().param("albumId", "albumMId"))
     }
 
     /// Album songs (offset pagination).
@@ -55,11 +51,20 @@ impl AlbumApi {
     }
 
     /// Remove favourite albums (login required).
-    pub fn del_fav_album(&self, album_ids: &[i64], credential: Option<Credential>) -> CgiRequest<AlbumFavWriteResponse> {
+    pub fn del_fav_album(
+        &self,
+        album_ids: &[i64],
+        credential: Option<Credential>,
+    ) -> CgiRequest<AlbumFavWriteResponse> {
         self.fav_write("CancelFavAlbum", album_ids, credential)
     }
 
-    fn fav_write(&self, method: &str, ids: &[i64], credential: Option<Credential>) -> CgiRequest<AlbumFavWriteResponse> {
+    fn fav_write(
+        &self,
+        method: &str,
+        ids: &[i64],
+        credential: Option<Credential>,
+    ) -> CgiRequest<AlbumFavWriteResponse> {
         self.cgi("music.musicasset.AlbumFavWrite", method, json!({"v_albumId": ids}))
             .require_login(true)
             .credential_opt(credential)
@@ -80,7 +85,10 @@ mod tests {
         assert_eq!(detail.album.album.name, "n");
         assert_eq!(last_req0(&mock)["param"], json!({"albumMId": "002MAeob"}));
 
-        push_cgi(&mock, json!({"totalNum": 3, "songList": [{"songInfo": {"id": 1, "mid": "a"}}, {"songInfo": {"id": 2, "mid": "b"}}]}));
+        push_cgi(
+            &mock,
+            json!({"totalNum": 3, "songList": [{"songInfo": {"id": 1, "mid": "a"}}, {"songInfo": {"id": 2, "mid": "b"}}]}),
+        );
         push_cgi(&mock, json!({"totalNum": 3, "songList": [{"songInfo": {"id": 3, "mid": "c"}}]}));
         let songs = client.album().get_song(42, 2, 1).collect_items(None).await.unwrap();
         assert_eq!(songs.len(), 3);

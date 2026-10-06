@@ -56,13 +56,7 @@ impl RawPayload {
     /// Build from a transport response.
     pub fn from_response(response: Response) -> Self {
         let cookies = response.cookies();
-        Self {
-            status: response.status,
-            url: response.url,
-            headers: response.headers,
-            cookies,
-            content: response.body,
-        }
+        Self { status: response.status, url: response.url, headers: response.headers, cookies, content: response.body }
     }
 
     /// Body as text (lossy UTF-8).
@@ -72,16 +66,12 @@ impl RawPayload {
 
     /// Body parsed as JSON.
     pub fn json(&self) -> Result<Value> {
-        serde_json::from_slice(&self.content)
-            .map_err(|e| Error::api_data(format!("响应内容非有效 JSON 格式: {e}")))
+        serde_json::from_slice(&self.content).map_err(|e| Error::api_data(format!("响应内容非有效 JSON 格式: {e}")))
     }
 
     /// First header value (case insensitive).
     pub fn header(&self, name: &str) -> Option<&str> {
-        self.headers
-            .iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case(name))
-            .map(|(_, v)| v.as_str())
+        self.headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str())
     }
 }
 
@@ -94,8 +84,7 @@ pub fn ensure_http_success(response: &Response) -> Result<()> {
         Ok(())
     } else {
         Err(Error::Http {
-            status: response.status,
-            message: format!("HTTP 请求状态码异常: {}", response.status),
+            status: response.status, message: format!("HTTP 请求状态码异常: {}", response.status)
         })
     }
 }
@@ -139,10 +128,7 @@ pub fn unwrap_cgi_envelope(response: &Response, expected_count: usize) -> Result
         Some(Some(code)) => code,
         _ => {
             let name = type_name(map.get("code"));
-            return Err(Error::api_data_with(
-                format!("CGI 外层 code 类型异常: {name}"),
-                Value::Object(map),
-            ));
+            return Err(Error::api_data_with(format!("CGI 外层 code 类型异常: {name}"), Value::Object(map)));
         }
     };
     if code != 0 {
@@ -163,11 +149,7 @@ pub fn unwrap_cgi_envelope(response: &Response, expected_count: usize) -> Result
 /// Returns `data` on success. When the code is allowed by
 /// `allow_error_codes`, returns `data` if `parse_on_allow` is set and the
 /// whole raw item otherwise.
-pub fn parse_cgi_item(
-    raw: Value,
-    allow_error_codes: Option<&AllowErrorCodes>,
-    parse_on_allow: bool,
-) -> Result<Value> {
+pub fn parse_cgi_item(raw: Value, allow_error_codes: Option<&AllowErrorCodes>, parse_on_allow: bool) -> Result<Value> {
     let code = match code_of(raw.get("code")) {
         Some(Some(code)) => code,
         _ => {
@@ -176,9 +158,7 @@ pub fn parse_cgi_item(
         }
     };
     let take_data = |raw: Value| match raw {
-        Value::Object(mut map) => map
-            .shift_remove("data")
-            .unwrap_or_else(|| Value::Object(serde_json::Map::new())),
+        Value::Object(mut map) => map.shift_remove("data").unwrap_or_else(|| Value::Object(serde_json::Map::new())),
         _ => Value::Object(serde_json::Map::new()),
     };
     if allow_error_codes.is_some_and(|allow| allow.contains(code)) {
@@ -201,11 +181,9 @@ mod tests {
 
     #[test]
     fn envelope_success() {
-        let items = unwrap_cgi_envelope(
-            &resp(json!({"code": 0, "req_0": {"code": 0, "data": {"a": 1}}, "req_1": "bad"})),
-            3,
-        )
-        .unwrap();
+        let items =
+            unwrap_cgi_envelope(&resp(json!({"code": 0, "req_0": {"code": 0, "data": {"a": 1}}, "req_1": "bad"})), 3)
+                .unwrap();
         assert_eq!(items.len(), 3);
         assert!(items[0].is_some());
         assert!(items[1].is_none());
@@ -235,10 +213,7 @@ mod tests {
 
     #[test]
     fn item_parsing() {
-        assert_eq!(
-            parse_cgi_item(json!({"code": 0, "data": {"x": 1}}), None, false).unwrap(),
-            json!({"x": 1})
-        );
+        assert_eq!(parse_cgi_item(json!({"code": 0, "data": {"x": 1}}), None, false).unwrap(), json!({"x": 1}));
         assert_eq!(parse_cgi_item(json!({}), None, false).unwrap(), json!({}));
         let err = parse_cgi_item(json!({"code": 2001, "data": {"feedbackURL": "u"}}), None, false).unwrap_err();
         assert!(err.is_ratelimited());
@@ -253,10 +228,7 @@ mod tests {
         let raw = json!({"code": 10007, "data": {"midurlinfo": []}});
         let allow = AllowErrorCodes::from([10007]);
         assert_eq!(parse_cgi_item(raw.clone(), Some(&allow), false).unwrap(), raw);
-        assert_eq!(
-            parse_cgi_item(raw.clone(), Some(&allow), true).unwrap(),
-            json!({"midurlinfo": []})
-        );
+        assert_eq!(parse_cgi_item(raw.clone(), Some(&allow), true).unwrap(), json!({"midurlinfo": []}));
         assert_eq!(parse_cgi_item(raw.clone(), Some(&AllowErrorCodes::All), false).unwrap(), raw);
         assert!(parse_cgi_item(raw, Some(&AllowErrorCodes::from(vec![1])), false).is_err());
         assert!(AllowErrorCodes::All.contains(5));
@@ -277,10 +249,7 @@ mod tests {
     fn http_status_semantics() {
         assert!(ensure_http_success(&Response::new(200, "")).is_ok());
         assert!(ensure_http_success(&Response::new(302, "")).is_ok());
-        assert!(matches!(
-            ensure_http_success(&Response::new(404, "")),
-            Err(Error::Http { status: 404, .. })
-        ));
+        assert!(matches!(ensure_http_success(&Response::new(404, "")), Err(Error::Http { status: 404, .. })));
         assert!(ensure_http_success(&Response::new(503, "")).is_err());
     }
 }

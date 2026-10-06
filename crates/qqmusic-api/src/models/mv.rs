@@ -165,12 +165,15 @@ mod tests {
 
     #[test]
     fn mv_models() {
-        let detail: GetMvDetailResponse = from_value(&json!({"v1": {"vid": "v1", "name": "n", "related_songs": [1]}})).unwrap();
+        let detail: GetMvDetailResponse =
+            from_value(&json!({"v1": {"vid": "v1", "name": "n", "related_songs": [1]}})).unwrap();
         assert_eq!(detail.data["v1"].mv.name, "n");
         assert_eq!(detail.data["v1"].related_songs, vec![1]);
-        let urls: GetMvUrlsResponse = from_value(&json!({"v1": {"mp4": [{"url": ["u"], "fileSize": 5, "newFileType": 2}], "hls": []}})).unwrap();
+        let urls: GetMvUrlsResponse =
+            from_value(&json!({"v1": {"mp4": [{"url": ["u"], "fileSize": 5, "newFileType": 2}], "hls": []}})).unwrap();
         assert_eq!(urls.data["v1"].mp4[0].file_size, 5);
-        let list: GetMvListResponse = from_value(&json!({"total": 1, "list": [{"vid": "v", "singers": [{"mid": "s"}]}]})).unwrap();
+        let list: GetMvListResponse =
+            from_value(&json!({"total": 1, "list": [{"vid": "v", "singers": [{"mid": "s"}]}]})).unwrap();
         assert_eq!(list.into_items()[0].singers[0].mid, "s");
     }
 }

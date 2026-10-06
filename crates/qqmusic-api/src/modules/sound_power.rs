@@ -4,8 +4,8 @@ use serde_json::json;
 
 use crate::credential::Credential;
 use crate::models::sound_power::{
-    ActTaskModulesResponse, FriendRankResponse, HugevipLevelRuleResponse, LikeFriendResponse,
-    SetRankPrivacyResponse, SoundPowerDetailResponse, SoundPowerMedalEntryResponse,
+    ActTaskModulesResponse, FriendRankResponse, HugevipLevelRuleResponse, LikeFriendResponse, SetRankPrivacyResponse,
+    SoundPowerDetailResponse, SoundPowerMedalEntryResponse,
 };
 use crate::request::CgiRequest;
 
@@ -58,7 +58,12 @@ impl SoundPowerApi {
     }
 
     /// Like (or un-like) a friend in the ranking.
-    pub fn like_friend(&self, uin: &str, cancel: bool, credential: Option<Credential>) -> CgiRequest<LikeFriendResponse> {
+    pub fn like_friend(
+        &self,
+        uin: &str,
+        cancel: bool,
+        credential: Option<Credential>,
+    ) -> CgiRequest<LikeFriendResponse> {
         self.login_cgi(
             "music.activeCenter.FriendRankSvr",
             "Like",
@@ -73,7 +78,11 @@ impl SoundPowerApi {
     }
 
     /// Medal hall entry.
-    pub fn get_medal_entry(&self, enc_uin: &str, credential: Option<Credential>) -> CgiRequest<SoundPowerMedalEntryResponse> {
+    pub fn get_medal_entry(
+        &self,
+        enc_uin: &str,
+        credential: Option<Credential>,
+    ) -> CgiRequest<SoundPowerMedalEntryResponse> {
         self.login_cgi(
             "music.medalHall.MedalHallEntrySrv",
             "GetSoundPowerEntry",
@@ -122,7 +131,10 @@ mod tests {
         assert_eq!(last_req0(&mock)["method"], "QueryLevelDetailPage");
         client.sound_power().get_hugevip_rule(None).await.unwrap();
         client.sound_power().get_friend_rank(10, 5, "u", 3, None).await.unwrap();
-        assert_eq!(last_req0(&mock)["param"], json!({"rank_type": 1, "offset": 10, "limit": 5, "last_uin": "u", "rankno": 3}));
+        assert_eq!(
+            last_req0(&mock)["param"],
+            json!({"rank_type": 1, "offset": 10, "limit": 5, "last_uin": "u", "rankno": 3})
+        );
         client.sound_power().like_friend("2", true, None).await.unwrap();
         assert_eq!(last_req0(&mock)["param"]["cancel"], 1);
         assert_eq!(client.sound_power().set_rank_privacy(1, None).await.unwrap().status, 1);

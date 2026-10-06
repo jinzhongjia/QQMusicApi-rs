@@ -35,22 +35,18 @@ const SBOX: [[u8; 64]; 8] = [
 
 /// Output bit sources (for bit 31 down to 0) of the P permutation in `f`.
 const P_PERM: [u32; 32] = [
-    16, 25, 12, 11, 3, 20, 4, 15, 31, 17, 9, 6, 27, 14, 1, 22, 30, 24, 8, 18, 0, 5, 29, 23, 13, 19,
-    2, 26, 10, 21, 28, 7,
+    16, 25, 12, 11, 3, 20, 4, 15, 31, 17, 9, 6, 27, 14, 1, 22, 30, 24, 8, 18, 0, 5, 29, 23, 13, 19, 2, 26, 10, 21, 28,
+    7,
 ];
 
 const KEY_RND_SHIFT: [u32; 16] = [1, 1, 2, 2, 2, 2, 2, 2, 1, 2, 2, 2, 2, 2, 2, 1];
-const KEY_PERM_C: [u32; 28] = [
-    56, 48, 40, 32, 24, 16, 8, 0, 57, 49, 41, 33, 25, 17, 9, 1, 58, 50, 42, 34, 26, 18, 10, 2, 59,
-    51, 43, 35,
-];
-const KEY_PERM_D: [u32; 28] = [
-    62, 54, 46, 38, 30, 22, 14, 6, 61, 53, 45, 37, 29, 21, 13, 5, 60, 52, 44, 36, 28, 20, 12, 4, 27,
-    19, 11, 3,
-];
+const KEY_PERM_C: [u32; 28] =
+    [56, 48, 40, 32, 24, 16, 8, 0, 57, 49, 41, 33, 25, 17, 9, 1, 58, 50, 42, 34, 26, 18, 10, 2, 59, 51, 43, 35];
+const KEY_PERM_D: [u32; 28] =
+    [62, 54, 46, 38, 30, 22, 14, 6, 61, 53, 45, 37, 29, 21, 13, 5, 60, 52, 44, 36, 28, 20, 12, 4, 27, 19, 11, 3];
 const KEY_COMPRESSION: [u32; 48] = [
-    13, 16, 10, 23, 0, 4, 2, 27, 14, 5, 20, 9, 22, 18, 11, 3, 25, 7, 15, 6, 26, 19, 12, 1, 40, 51,
-    30, 36, 46, 54, 29, 39, 50, 44, 32, 47, 43, 48, 38, 55, 33, 52, 45, 41, 49, 35, 28, 31,
+    13, 16, 10, 23, 0, 4, 2, 27, 14, 5, 20, 9, 22, 18, 11, 3, 25, 7, 15, 6, 26, 19, 12, 1, 40, 51, 30, 36, 46, 54, 29,
+    39, 50, 44, 32, 47, 43, 48, 38, 55, 33, 52, 45, 41, 49, 35, 28, 31,
 ];
 
 /// 16 round sub keys of 6 bytes each.
@@ -135,10 +131,7 @@ fn f(state: u32, key: &[u8; 6]) -> u32 {
         | (s(6, ((k4 & 0x0F) << 2) | (k5 >> 6)) << 4)
         | s(7, k5 & 0x3F);
 
-    P_PERM
-        .iter()
-        .enumerate()
-        .fold(0u32, |acc, (i, &src)| acc | (bit(state, src) << (31 - i as u32)))
+    P_PERM.iter().enumerate().fold(0u32, |acc, (i, &src)| acc | (bit(state, src) << (31 - i as u32)))
 }
 
 fn crypt(input: &[u8; 8], key: &KeySchedule) -> [u8; 8] {
@@ -163,21 +156,11 @@ pub fn key_schedule(key: &[u8], mode: Mode) -> KeySchedule {
     let v0 = u32::from_le_bytes([key[0], key[1], key[2], key[3]]);
     let v1 = u32::from_le_bytes([key[4], key[5], key[6], key[7]]);
     let pick = |b: u32| {
-        if b < 32 {
-            bit(v0, 31 - b)
-        } else {
-            bit(v1, 63 - b)
-        }
+        if b < 32 { bit(v0, 31 - b) } else { bit(v1, 63 - b) }
     };
 
-    let mut c = KEY_PERM_C
-        .iter()
-        .enumerate()
-        .fold(0u32, |acc, (i, &b)| acc | (pick(b) << (31 - i as u32)));
-    let mut d = KEY_PERM_D
-        .iter()
-        .enumerate()
-        .fold(0u32, |acc, (i, &b)| acc | (pick(b) << (31 - i as u32)));
+    let mut c = KEY_PERM_C.iter().enumerate().fold(0u32, |acc, (i, &b)| acc | (pick(b) << (31 - i as u32)));
+    let mut d = KEY_PERM_D.iter().enumerate().fold(0u32, |acc, (i, &b)| acc | (pick(b) << (31 - i as u32)));
 
     for (i, shift) in KEY_RND_SHIFT.iter().enumerate() {
         c = ((c << shift) | (c >> (28 - shift))) & 0xFFFF_FFF0;
@@ -189,11 +172,7 @@ pub fn key_schedule(key: &[u8], mode: Mode) -> KeySchedule {
         let round = &mut schedule[target];
         *round = [0; 6];
         for (j, &comp) in KEY_COMPRESSION.iter().enumerate() {
-            let value = if j < 24 {
-                bit(c, 31 - comp)
-            } else {
-                bit(d, 31 - (comp - 27))
-            };
+            let value = if j < 24 { bit(c, 31 - comp) } else { bit(d, 31 - (comp - 27)) };
             round[j / 8] |= (value as u8) << (7 - (j % 8));
         }
     }

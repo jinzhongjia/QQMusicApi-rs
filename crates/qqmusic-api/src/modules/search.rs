@@ -3,8 +3,7 @@
 use serde_json::{Map, Value, json};
 
 use crate::models::search::{
-    CompleteResponse, GeneralSearchResponse, HotkeyResponse, QuickSearchResponse, SearchByTypeResponse,
-    SearchSelector,
+    CompleteResponse, GeneralSearchResponse, HotkeyResponse, QuickSearchResponse, SearchByTypeResponse, SearchSelector,
 };
 use crate::pagination::{FnStrategy, PageStrategy, Paged};
 use crate::request::{CgiRequest, HttpRequest, HttpSpec};
@@ -82,14 +81,7 @@ pub struct SearchOptions {
 
 impl Default for SearchOptions {
     fn default() -> Self {
-        Self {
-            search_type: SearchType::Song,
-            num: 10,
-            page: 1,
-            selectors: Vec::new(),
-            searchid: None,
-            highlight: true,
-        }
+        Self { search_type: SearchType::Song, num: 10, page: 1, selectors: Vec::new(), searchid: None, highlight: true }
     }
 }
 
@@ -101,11 +93,7 @@ api_module! {
 impl SearchApi {
     /// Hot keywords.
     pub fn get_hotkey(&self) -> CgiRequest<HotkeyResponse> {
-        self.cgi(
-            "music.musicsearch.HotkeyService",
-            "GetHotkeyForQQMusicMobile",
-            json!({"search_id": get_search_id()}),
-        )
+        self.cgi("music.musicsearch.HotkeyService", "GetHotkeyForQQMusicMobile", json!({"search_id": get_search_id()}))
     }
 
     /// Keyword completion.
@@ -170,27 +158,15 @@ impl SearchApi {
 
     /// Typed search (songs by default).
     pub fn by_type(&self, keyword: &str, search_type: SearchType) -> Paged<SearchByTypeResponse> {
-        self.by_type_with(
-            keyword,
-            SearchOptions {
-                search_type,
-                ..SearchOptions::default()
-            },
-        )
+        self.by_type_with(keyword, SearchOptions { search_type, ..SearchOptions::default() })
     }
 
     /// Typed search with options.
     pub fn by_type_with(&self, keyword: &str, options: SearchOptions) -> Paged<SearchByTypeResponse> {
-        let selectors: Map<String, Value> = options
-            .selectors
-            .iter()
-            .map(|s| (s.r#type.to_string(), Value::String(s.id.to_string())))
-            .collect();
-        let vec_selectors: Vec<Value> = options
-            .selectors
-            .iter()
-            .map(|s| json!({"type": s.r#type, "name": s.name, "id": s.id}))
-            .collect();
+        let selectors: Map<String, Value> =
+            options.selectors.iter().map(|s| (s.r#type.to_string(), Value::String(s.id.to_string()))).collect();
+        let vec_selectors: Vec<Value> =
+            options.selectors.iter().map(|s| json!({"type": s.r#type, "name": s.name, "id": s.id})).collect();
         let request = self
             .cgi(
                 "music.search.SearchCgiService",
@@ -239,7 +215,10 @@ mod tests {
     #[tokio::test]
     async fn by_type_paginates() {
         let (client, mock) = mock_client();
-        push_cgi(&mock, json!({"meta": {"nextpage": 2, "sum": 3}, "body": {"item_song": [{"id": 1, "mid": "a"}, {"id": 2, "mid": "b"}]}}));
+        push_cgi(
+            &mock,
+            json!({"meta": {"nextpage": 2, "sum": 3}, "body": {"item_song": [{"id": 1, "mid": "a"}, {"id": 2, "mid": "b"}]}}),
+        );
         push_cgi(&mock, json!({"meta": {"nextpage": -1, "sum": 3}, "body": {"item_song": [{"id": 3, "mid": "c"}]}}));
         let items = client
             .search()
@@ -286,11 +265,7 @@ mod tests {
         let mut start = Map::new();
         start.insert("x".into(), json!(1));
         push_cgi(&mock, json!({}));
-        client
-            .search()
-            .general_search_with("k", 3, 5, Some("fixed"), Some(start), false)
-            .await
-            .unwrap();
+        client.search().general_search_with("k", 3, 5, Some("fixed"), Some(start), false).await.unwrap();
         let req = last_req0(&mock);
         assert_eq!(req["param"]["searchid"], "fixed");
         assert_eq!(req["param"]["page_start"], json!({"x": 1}));

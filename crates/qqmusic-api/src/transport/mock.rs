@@ -13,10 +13,7 @@ type Handler = dyn Fn(&Request) -> Result<Response, TransportError> + Send + Syn
 
 enum Route {
     /// Matches when the predicate returns true; answered by the handler.
-    Handler {
-        matcher: Box<dyn Fn(&Request) -> bool + Send + Sync>,
-        handler: Box<Handler>,
-    },
+    Handler { matcher: Box<dyn Fn(&Request) -> bool + Send + Sync>, handler: Box<Handler> },
 }
 
 /// Mock transport recording every request.
@@ -39,9 +36,7 @@ struct Inner {
 
 impl fmt::Debug for MockTransport {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("MockTransport")
-            .field("requests", &self.request_count())
-            .finish_non_exhaustive()
+        f.debug_struct("MockTransport").field("requests", &self.request_count()).finish_non_exhaustive()
     }
 }
 
@@ -101,10 +96,7 @@ impl MockTransport {
         M: Fn(&Request) -> bool + Send + Sync + 'static,
         F: Fn(&Request) -> Result<Response, TransportError> + Send + Sync + 'static,
     {
-        lock(&self.inner.routes).push(Route::Handler {
-            matcher: Box::new(matcher),
-            handler: Box::new(handler),
-        });
+        lock(&self.inner.routes).push(Route::Handler { matcher: Box::new(matcher), handler: Box::new(handler) });
         self
     }
 
@@ -123,11 +115,7 @@ impl MockTransport {
 
     /// Recorded requests whose URL contains `fragment`.
     pub fn requests_to(&self, fragment: &str) -> Vec<Request> {
-        lock(&self.inner.requests)
-            .iter()
-            .filter(|r| r.url.contains(fragment))
-            .cloned()
-            .collect()
+        lock(&self.inner.requests).iter().filter(|r| r.url.contains(fragment)).cloned().collect()
     }
 
     /// Number of recorded requests.

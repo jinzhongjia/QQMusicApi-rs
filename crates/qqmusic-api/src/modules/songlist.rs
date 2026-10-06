@@ -33,14 +33,7 @@ pub struct SonglistDetailOptions {
 
 impl Default for SonglistDetailOptions {
     fn default() -> Self {
-        Self {
-            dirid: 0,
-            num: 10,
-            page: 1,
-            onlysong: false,
-            tag: true,
-            userinfo: true,
-        }
+        Self { dirid: 0, num: 10, page: 1, onlysong: false, tag: true, userinfo: true }
     }
 }
 
@@ -68,7 +61,11 @@ impl SonglistApi {
     }
 
     /// Playlist detail with options.
-    pub fn get_detail_with(&self, songlist_id: i64, options: SonglistDetailOptions) -> Paged<GetSonglistDetailResponse> {
+    pub fn get_detail_with(
+        &self,
+        songlist_id: i64,
+        options: SonglistDetailOptions,
+    ) -> Paged<GetSonglistDetailResponse> {
         Paged::new(
             self.cgi(
                 "music.srfDissInfo.DissInfo",
@@ -106,7 +103,13 @@ impl SonglistApi {
     }
 
     /// Add `(song_id, song_type)` pairs. `Ok(false)` when nothing changed.
-    pub async fn add_songs(&self, dirid: i64, songs: &[(i64, i64)], tid: i64, credential: Option<Credential>) -> Result<bool> {
+    pub async fn add_songs(
+        &self,
+        dirid: i64,
+        songs: &[(i64, i64)],
+        tid: i64,
+        credential: Option<Credential>,
+    ) -> Result<bool> {
         let request = self
             .cgi::<Value>("music.musicasset.PlaylistDetailWrite", "AddSonglist", oper_param(dirid, songs, tid))
             .require_login(true)
@@ -115,7 +118,13 @@ impl SonglistApi {
     }
 
     /// Remove `(song_id, song_type)` pairs. `Ok(false)` when nothing changed.
-    pub async fn del_songs(&self, dirid: i64, songs: &[(i64, i64)], tid: i64, credential: Option<Credential>) -> Result<bool> {
+    pub async fn del_songs(
+        &self,
+        dirid: i64,
+        songs: &[(i64, i64)],
+        tid: i64,
+        credential: Option<Credential>,
+    ) -> Result<bool> {
         let request = self
             .cgi::<Value>("music.musicasset.PlaylistDetailWrite", "DelSonglist", oper_param(dirid, songs, tid))
             .require_login(true);
@@ -150,7 +159,10 @@ mod tests {
     #[tokio::test]
     async fn detail_paging() {
         let (client, mock) = mock_client();
-        push_cgi(&mock, json!({"hasmore": 1, "total_song_num": 3, "songlist": [{"id": 1, "mid": "a"}, {"id": 2, "mid": "b"}]}));
+        push_cgi(
+            &mock,
+            json!({"hasmore": 1, "total_song_num": 3, "songlist": [{"id": 1, "mid": "a"}, {"id": 2, "mid": "b"}]}),
+        );
         push_cgi(&mock, json!({"hasmore": 0, "total_song_num": 3, "songlist": [{"id": 3, "mid": "c"}]}));
         let songs = client
             .songlist()

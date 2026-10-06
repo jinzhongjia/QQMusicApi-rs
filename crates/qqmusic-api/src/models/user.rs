@@ -632,30 +632,43 @@ mod tests {
         assert_eq!(created.playlists[0].songlist.title, "我喜欢");
         assert_eq!(created.playlists[0].create_fav_cnt, 3);
         assert!(created.finished);
-        let fav: UserFavSonglistResponse = from_value(&json!({"v_list": [{"tid": 1, "nickname": "n", "createtime": 9}], "hasmore": 1})).unwrap();
+        let fav: UserFavSonglistResponse =
+            from_value(&json!({"v_list": [{"tid": 1, "nickname": "n", "createtime": 9}], "hasmore": 1})).unwrap();
         assert_eq!(fav.playlists[0].create_time, 9);
-        let albums: UserFavAlbumResponse = from_value(&json!({"v_list": [{"albumMid": "a", "v_singer": [{"mid": "s"}]}]})).unwrap();
+        let albums: UserFavAlbumResponse =
+            from_value(&json!({"v_list": [{"albumMid": "a", "v_singer": [{"mid": "s"}]}]})).unwrap();
         assert_eq!(albums.albums[0].album.mid, "a");
         assert_eq!(albums.into_items()[0].singers[0].mid, "s");
     }
 
     #[test]
     fn profile_models() {
-        let vip: UserVipInfoResponse = from_value(&json!({"maxDirNum": 10, "identity": {"HugeVip": 1, "nextlevel": 2}, "userinfo": {"buyurl": "u"}})).unwrap();
+        let vip: UserVipInfoResponse = from_value(
+            &json!({"maxDirNum": 10, "identity": {"HugeVip": 1, "nextlevel": 2}, "userinfo": {"buyurl": "u"}}),
+        )
+        .unwrap();
         assert_eq!((vip.max_dir_num, vip.identity.huge_vip, vip.identity.next_level), (10, 1, 2));
         assert_eq!(vip.userinfo.buy_url, "u");
-        let home: UserHomepageResponse = from_value(&json!({"Info": {"BaseInfo": {"Name": "n"}, "IsFollowed": 1}, "TabDetail": {"x": 1}})).unwrap();
+        let home: UserHomepageResponse =
+            from_value(&json!({"Info": {"BaseInfo": {"Name": "n"}, "IsFollowed": 1}, "TabDetail": {"x": 1}})).unwrap();
         assert_eq!((home.base_info.name.as_str(), home.is_followed), ("n", 1));
-        let gene: UserMusicGeneResponse = from_value(&json!({"UserInfoCard": {"NickName": "n"}, "ListeningReport": {"Report": [{}]}, "IsVisitAccount": true})).unwrap();
+        let gene: UserMusicGeneResponse = from_value(
+            &json!({"UserInfoCard": {"NickName": "n"}, "ListeningReport": {"Report": [{}]}, "IsVisitAccount": true}),
+        )
+        .unwrap();
         assert_eq!(gene.user_info_card.nick_name, "n");
         assert_eq!(gene.listening_report.report.len(), 1);
-        let rel: UserRelationListResponse = from_value(&json!({"Total": 2, "List": [{"MID": "m", "IsFollow": true}], "HasMore": true})).unwrap();
+        let rel: UserRelationListResponse =
+            from_value(&json!({"Total": 2, "List": [{"MID": "m", "IsFollow": true}], "HasMore": true})).unwrap();
         assert!(rel.users[0].is_follow);
-        let friends: UserFriendListResponse = from_value(&json!({"Friends": [{"UserName": "f"}], "HasMore": false})).unwrap();
+        let friends: UserFriendListResponse =
+            from_value(&json!({"Friends": [{"UserName": "f"}], "HasMore": false})).unwrap();
         assert_eq!(friends.friends[0].user_name, "f");
-        let mvs: UserFavMvResponse = from_value(&json!({"subcode": 0, "mvlist": [{"vid": "v", "picUrl": "p"}]})).unwrap();
+        let mvs: UserFavMvResponse =
+            from_value(&json!({"subcode": 0, "mvlist": [{"vid": "v", "picUrl": "p"}]})).unwrap();
         assert_eq!(mvs.mv_list[0].picurl, "p");
-        let dislike: DislikeListData = from_value(&json!({"Retcode": 0, "Songs": [{"ID": 12, "Name": "s"}], "Page": 1})).unwrap();
+        let dislike: DislikeListData =
+            from_value(&json!({"Retcode": 0, "Songs": [{"ID": 12, "Name": "s"}], "Page": 1})).unwrap();
         assert_eq!(dislike.songs[0].id, "12");
     }
 }

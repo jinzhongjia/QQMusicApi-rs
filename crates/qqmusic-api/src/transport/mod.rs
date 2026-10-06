@@ -88,13 +88,8 @@ impl Body {
             Self::Empty => None,
             Self::Json(data) => Some(("application/json".to_string(), data.clone())),
             Self::Form(pairs) => {
-                let encoded = url::form_urlencoded::Serializer::new(String::new())
-                    .extend_pairs(pairs)
-                    .finish();
-                Some((
-                    "application/x-www-form-urlencoded".to_string(),
-                    encoded.into_bytes(),
-                ))
+                let encoded = url::form_urlencoded::Serializer::new(String::new()).extend_pairs(pairs).finish();
+                Some(("application/x-www-form-urlencoded".to_string(), encoded.into_bytes()))
             }
             Self::Raw { content_type, data } => Some((content_type.clone(), data.clone())),
         }
@@ -149,19 +144,14 @@ impl Request {
         if self.query.is_empty() {
             return self.url.clone();
         }
-        let query = url::form_urlencoded::Serializer::new(String::new())
-            .extend_pairs(&self.query)
-            .finish();
+        let query = url::form_urlencoded::Serializer::new(String::new()).extend_pairs(&self.query).finish();
         let separator = if self.url.contains('?') { '&' } else { '?' };
         format!("{}{separator}{query}", self.url)
     }
 
     /// First header value (case insensitive).
     pub fn header(&self, name: &str) -> Option<&str> {
-        self.headers
-            .iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case(name))
-            .map(|(_, v)| v.as_str())
+        self.headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str())
     }
 
     /// Insert or replace a header (case insensitive).
@@ -173,10 +163,7 @@ impl Request {
 
     /// Value of a query parameter.
     pub fn query_param(&self, name: &str) -> Option<&str> {
-        self.query
-            .iter()
-            .find(|(k, _)| k == name)
-            .map(|(_, v)| v.as_str())
+        self.query.iter().find(|(k, _)| k == name).map(|(_, v)| v.as_str())
     }
 
     /// Parse the JSON body (if any).
@@ -218,20 +205,13 @@ pub struct Response {
 impl Response {
     /// Response with a status and body.
     pub fn new(status: u16, body: impl Into<Vec<u8>>) -> Self {
-        Self {
-            status,
-            url: String::new(),
-            headers: Vec::new(),
-            body: body.into(),
-        }
+        Self { status, url: String::new(), headers: Vec::new(), body: body.into() }
     }
 
     /// `200 OK` JSON response.
     pub fn json(value: &Value) -> Self {
         let mut response = Self::new(200, serde_json::to_vec(value).unwrap_or_default());
-        response
-            .headers
-            .push(("content-type".into(), "application/json".into()));
+        response.headers.push(("content-type".into(), "application/json".into()));
         response
     }
 
@@ -244,19 +224,13 @@ impl Response {
 
     /// First header value (case insensitive).
     pub fn header(&self, name: &str) -> Option<&str> {
-        self.headers
-            .iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case(name))
-            .map(|(_, v)| v.as_str())
+        self.headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str())
     }
 
     /// Cookies set by the response (`Set-Cookie`).
     pub fn cookies(&self) -> IndexMap<String, String> {
         parse_set_cookies(
-            self.headers
-                .iter()
-                .filter(|(k, _)| k.eq_ignore_ascii_case("set-cookie"))
-                .map(|(_, v)| v.as_str()),
+            self.headers.iter().filter(|(k, _)| k.eq_ignore_ascii_case("set-cookie")).map(|(_, v)| v.as_str()),
         )
     }
 
@@ -314,10 +288,7 @@ impl fmt::Debug for StreamingResponse {
 impl StreamingResponse {
     /// First header value (case insensitive).
     pub fn header(&self, name: &str) -> Option<&str> {
-        self.headers
-            .iter()
-            .find(|(k, _)| k.eq_ignore_ascii_case(name))
-            .map(|(_, v)| v.as_str())
+        self.headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str())
     }
 
     /// Collect the remaining body.
@@ -376,10 +347,7 @@ mod tests {
         let mut req = Request::new(Method::Get, "https://a.b/c");
         assert_eq!(req.full_url(), "https://a.b/c");
         req.query = vec![("q".into(), "周 杰伦".into()), ("n".into(), "1&2".into())];
-        assert_eq!(
-            req.full_url(),
-            "https://a.b/c?q=%E5%91%A8+%E6%9D%B0%E4%BC%A6&n=1%262"
-        );
+        assert_eq!(req.full_url(), "https://a.b/c?q=%E5%91%A8+%E6%9D%B0%E4%BC%A6&n=1%262");
         let mut req2 = Request::new(Method::Get, "https://a.b/c?x=1");
         req2.query = vec![("y".into(), "2".into())];
         assert_eq!(req2.full_url(), "https://a.b/c?x=1&y=2");

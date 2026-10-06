@@ -76,11 +76,7 @@ pub struct CgiSpec {
 impl CgiSpec {
     /// New spec with default options.
     pub fn new(module: impl Into<String>, method: impl Into<String>, param: Value) -> Self {
-        let param = if param.is_null() {
-            Value::Object(Map::new())
-        } else {
-            param
-        };
+        let param = if param.is_null() { Value::Object(Map::new()) } else { param };
         Self {
             module: module.into(),
             method: method.into(),
@@ -209,11 +205,7 @@ pub struct CgiRequest<T> {
 
 impl<T> Clone for CgiRequest<T> {
     fn clone(&self) -> Self {
-        Self {
-            client: self.client.clone(),
-            spec: self.spec.clone(),
-            _marker: PhantomData,
-        }
+        Self { client: self.client.clone(), spec: self.spec.clone(), _marker: PhantomData }
     }
 }
 
@@ -226,11 +218,7 @@ impl<T> std::fmt::Debug for CgiRequest<T> {
 impl<T: FromJson + Send + 'static> CgiRequest<T> {
     /// Create a request.
     pub fn new(client: &Client, spec: CgiSpec) -> Self {
-        Self {
-            client: client.clone(),
-            spec,
-            _marker: PhantomData,
-        }
+        Self { client: client.clone(), spec, _marker: PhantomData }
     }
 
     cgi_builder_methods!();
@@ -242,11 +230,7 @@ impl<T: FromJson + Send + 'static> CgiRequest<T> {
 
     /// Decode the response into another model.
     pub fn into_model<U: FromJson + Send + 'static>(self) -> CgiRequest<U> {
-        CgiRequest {
-            client: self.client,
-            spec: self.spec,
-            _marker: PhantomData,
-        }
+        CgiRequest { client: self.client, spec: self.spec, _marker: PhantomData }
     }
 
     /// Consume the request returning its spec.
@@ -340,8 +324,7 @@ impl HttpSpec {
         K: Into<String>,
         V: Into<String>,
     {
-        self.query
-            .extend(pairs.into_iter().map(|(k, v)| (k.into(), v.into())));
+        self.query.extend(pairs.into_iter().map(|(k, v)| (k.into(), v.into())));
         self
     }
 
@@ -391,11 +374,7 @@ impl<T> std::fmt::Debug for HttpRequest<T> {
 impl<T: HttpOutput + Send + 'static> HttpRequest<T> {
     /// Create a request.
     pub fn new(client: &Client, spec: HttpSpec) -> Self {
-        Self {
-            client: client.clone(),
-            spec,
-            _marker: PhantomData,
-        }
+        Self { client: client.clone(), spec, _marker: PhantomData }
     }
 
     /// Use a specific credential (cookies) for this request.
@@ -465,20 +444,13 @@ pub struct Batch {
 
 impl Batch {
     pub(crate) fn new(client: &Client) -> Self {
-        Self {
-            client: client.clone(),
-            specs: Vec::new(),
-            batch_size: None,
-        }
+        Self { client: client.clone(), specs: Vec::new(), batch_size: None }
     }
 
     /// Add a request.
     pub fn add<T: FromJson + Send + 'static>(&mut self, request: CgiRequest<T>) -> Handle<T> {
         self.specs.push(request.into_spec());
-        Handle {
-            index: self.specs.len() - 1,
-            _marker: PhantomData,
-        }
+        Handle { index: self.specs.len() - 1, _marker: PhantomData }
     }
 
     /// Maximum number of module calls per HTTP request.
@@ -501,9 +473,7 @@ impl Batch {
     /// Execute all requests.
     pub async fn send(self) -> BatchResults {
         let items = self.client.execute_cgi(self.specs, self.batch_size).await;
-        BatchResults {
-            items: items.into_iter().map(Some).collect(),
-        }
+        BatchResults { items: items.into_iter().map(Some).collect() }
     }
 }
 

@@ -28,11 +28,7 @@ impl CommentTarget {
 
     /// Comments of any resource.
     pub fn new(biz_id: i64, biz_type: CommentBizType) -> Self {
-        Self {
-            biz_id,
-            biz_type,
-            biz_sub_type: None,
-        }
+        Self { biz_id, biz_type, biz_sub_type: None }
     }
 
     /// Set the sub type.
@@ -62,11 +58,7 @@ pub struct CommentPage {
 
 impl Default for CommentPage {
     fn default() -> Self {
-        Self {
-            page_num: 1,
-            page_size: 15,
-            last_comment_seq_no: String::new(),
-        }
+        Self { page_num: 1, page_size: 15, last_comment_seq_no: String::new() }
     }
 }
 
@@ -98,14 +90,16 @@ impl CommentApi {
             None if target.biz_type == CommentBizType::Song => request["biz_sub_type"] = json!(2),
             None => {}
         }
-        self.cgi(
-            "music.globalComment.CommentCountSrv",
-            "GetCmCount",
-            json!({"request": request}),
-        )
+        self.cgi("music.globalComment.CommentCountSrv", "GetCmCount", json!({"request": request}))
     }
 
-    fn list(&self, method: &str, target: CommentTarget, page: CommentPage, mut param: Value) -> Paged<CommentListResponse> {
+    fn list(
+        &self,
+        method: &str,
+        target: CommentTarget,
+        page: CommentPage,
+        mut param: Value,
+    ) -> Paged<CommentListResponse> {
         param["BizType"] = json!(target.biz_type.code());
         param["BizId"] = json!(target.biz_id.to_string());
         param["LastCommentSeqNo"] = json!(page.last_comment_seq_no);
@@ -114,20 +108,12 @@ impl CommentApi {
         if let Some(sub) = target.biz_sub_type {
             param["BizSubType"] = json!(sub);
         }
-        Paged::new(
-            self.cgi("music.globalComment.CommentRead", method, param),
-            comment_strategy(),
-        )
+        Paged::new(self.cgi("music.globalComment.CommentRead", method, param), comment_strategy())
     }
 
     /// Hot comments.
     pub fn get_hot_comments(&self, target: impl Into<CommentTarget>, page: CommentPage) -> Paged<CommentListResponse> {
-        self.list(
-            "GetHotCommentList",
-            target.into(),
-            page,
-            json!({"HotType": 1, "WithAirborne": 0, "PicEnable": 1}),
-        )
+        self.list("GetHotCommentList", target.into(), page, json!({"HotType": 1, "WithAirborne": 0, "PicEnable": 1}))
     }
 
     /// Newest comments.
@@ -141,7 +127,11 @@ impl CommentApi {
     }
 
     /// Recommended comments.
-    pub fn get_recommend_comments(&self, target: impl Into<CommentTarget>, page: CommentPage) -> Paged<CommentListResponse> {
+    pub fn get_recommend_comments(
+        &self,
+        target: impl Into<CommentTarget>,
+        page: CommentPage,
+    ) -> Paged<CommentListResponse> {
         self.list(
             "GetRecCommentList",
             target.into(),
@@ -225,7 +215,10 @@ mod tests {
         let (client, mock) = mock_client();
         mock.route_url("musicu", reply_all(json!({"response": {"count": 3}})));
         assert_eq!(client.comment().get_comment_count(97773).await.unwrap().count, 3);
-        assert_eq!(last_req0(&mock)["param"], json!({"request": {"biz_id": "97773", "biz_type": 1, "biz_sub_type": 2}}));
+        assert_eq!(
+            last_req0(&mock)["param"],
+            json!({"request": {"biz_id": "97773", "biz_type": 1, "biz_sub_type": 2}})
+        );
         client.comment().get_comment_count(CommentTarget::new(5, CommentBizType::Album)).await.unwrap();
         assert_eq!(last_req0(&mock)["param"], json!({"request": {"biz_id": "5", "biz_type": 2}}));
         client.comment().get_comment_count(CommentTarget::new(5, CommentBizType::Mv).sub_type(9)).await.unwrap();
@@ -248,7 +241,11 @@ mod tests {
         assert_eq!(mock.request_count(), 2);
 
         push_cgi(&mock, json!({"CommentList": {"HasMore": 0}}));
-        client.comment().get_new_comments(CommentTarget::song(1).sub_type(3), CommentPage { page_num: 2, ..CommentPage::default() }).await.unwrap();
+        client
+            .comment()
+            .get_new_comments(CommentTarget::song(1).sub_type(3), CommentPage { page_num: 2, ..CommentPage::default() })
+            .await
+            .unwrap();
         let req = last_req0(&mock);
         assert_eq!(req["param"]["PageNum"], 1);
         assert_eq!(req["param"]["BizSubType"], 3);
@@ -275,7 +272,10 @@ mod tests {
         push_cgi(&mock, json!({"AddedCmId": "new"}));
         let added = client.comment().add_comment(1, "好听", Some("p"), None).await.unwrap();
         assert_eq!(added.id, "new");
-        assert_eq!(last_req0(&mock)["param"], json!({"Content": "好听", "BizType": 1, "BizId": "1", "RepliedCmId": "p"}));
+        assert_eq!(
+            last_req0(&mock)["param"],
+            json!({"Content": "好听", "BizType": 1, "BizId": "1", "RepliedCmId": "p"})
+        );
         push_cgi(&mock, json!({"SubCode": 0}));
         assert!(client.comment().delete_comment("new", None).await.unwrap());
         push_cgi(&mock, json!({"SubCode": 5}));

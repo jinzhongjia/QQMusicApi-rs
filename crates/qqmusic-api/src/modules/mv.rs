@@ -41,11 +41,7 @@ api_module! {
 impl MvApi {
     /// MV details.
     pub fn get_detail(&self, vids: &[&str]) -> CgiRequest<GetMvDetailResponse> {
-        self.cgi(
-            "video.VideoDataServer",
-            "get_video_info_batch",
-            json!({"vidlist": vids, "required": DETAIL_FIELDS}),
-        )
+        self.cgi("video.VideoDataServer", "get_video_info_batch", json!({"vidlist": vids, "required": DETAIL_FIELDS}))
     }
 
     /// MV stream URLs.

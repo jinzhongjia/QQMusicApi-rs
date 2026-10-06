@@ -84,7 +84,8 @@ mod tests {
 
     const PLAIN: &str = "[ti:测试]\n[0,1000]你(0,500)好(500,500)\n";
     /// Generated with the upstream Python implementation.
-    const ENCRYPTED: &str = "AF52CCCEDF3E0E06D78BBF0DF18CD524903831EB0E4AC189FC58964633A9532985FAB0CDA27F3B4554D033274CFEA816";
+    const ENCRYPTED: &str =
+        "AF52CCCEDF3E0E06D78BBF0DF18CD524903831EB0E4AC189FC58964633A9532985FAB0CDA27F3B4554D033274CFEA816";
 
     #[test]
     fn decrypts_python_vector() {
@@ -103,9 +104,6 @@ mod tests {
         assert_eq!(qrc_decrypt("").unwrap(), "");
         assert_eq!(qrc_decrypt_bytes(&[]).unwrap(), "");
         assert!(matches!(qrc_decrypt("zz"), Err(QrcError::InvalidHex(_))));
-        assert!(matches!(
-            qrc_decrypt("00112233445566778899"),
-            Err(QrcError::Decompress(_))
-        ));
+        assert!(matches!(qrc_decrypt("00112233445566778899"), Err(QrcError::Decompress(_))));
     }
 }

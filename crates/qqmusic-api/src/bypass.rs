@@ -52,11 +52,7 @@ impl CtStrategy {
         match self {
             Self::Fixed(ct) => *ct,
             Self::DerivedFromGuid(candidates) => {
-                let candidates: &[i64] = if candidates.is_empty() {
-                    &HIGH_QUALITY_CT
-                } else {
-                    candidates
-                };
+                let candidates: &[i64] = if candidates.is_empty() { &HIGH_QUALITY_CT } else { candidates };
                 if guid.is_empty() {
                     return candidates[0];
                 }
@@ -108,10 +104,7 @@ impl Default for BypassConfig {
 impl BypassConfig {
     /// Disabled bypass (requests use the regular platform `comm`).
     pub fn disabled() -> Self {
-        Self {
-            enabled: false,
-            ..Self::default()
-        }
+        Self { enabled: false, ..Self::default() }
     }
 
     /// Use a fixed `ct`.
@@ -159,11 +152,7 @@ impl BypassConfig {
         if purl.starts_with("https://") {
             return purl.to_string();
         }
-        let cdn = if self.cdn.ends_with('/') {
-            self.cdn.clone()
-        } else {
-            format!("{}/", self.cdn)
-        };
+        let cdn = if self.cdn.ends_with('/') { self.cdn.clone() } else { format!("{}/", self.cdn) };
         format!("{cdn}{}", purl.trim_start_matches('/'))
     }
 }
@@ -215,10 +204,7 @@ mod tests {
     #[test]
     fn full_urls() {
         let config = BypassConfig::default();
-        assert_eq!(
-            config.full_url("M500x.mp3?vkey=1"),
-            "https://isure.stream.qqmusic.qq.com/M500x.mp3?vkey=1"
-        );
+        assert_eq!(config.full_url("M500x.mp3?vkey=1"), "https://isure.stream.qqmusic.qq.com/M500x.mp3?vkey=1");
         assert_eq!(config.full_url("http://a/b"), "https://a/b");
         assert_eq!(config.full_url("https://a/b"), "https://a/b");
         let custom = BypassConfig { force_https: false, ..config.with_cdn("http://cdn.example") };

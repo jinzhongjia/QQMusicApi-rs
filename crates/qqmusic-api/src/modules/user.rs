@@ -92,10 +92,7 @@ fn relation_strategy() -> OffsetStrategy<UserRelationListResponse> {
 }
 
 fn dislike_body(kind: DislikeType, values: &[i64]) -> Value {
-    let items: Vec<Value> = values
-        .iter()
-        .map(|v| json!({"ID": v.to_string(), "IdType": kind.id_type()}))
-        .collect();
+    let items: Vec<Value> = values.iter().map(|v| json!({"ID": v.to_string(), "IdType": kind.id_type()})).collect();
     let mut body = json!({});
     body[kind.key()] = json!(items);
     body
@@ -143,7 +140,14 @@ impl UserApi {
         self.login_cgi("VipLogin.VipLoginInter", "vip_login_base", json!({}), credential)
     }
 
-    fn relation(&self, method: &str, euin: &str, page: i64, num: i64, credential: Option<Credential>) -> Paged<UserRelationListResponse> {
+    fn relation(
+        &self,
+        method: &str,
+        euin: &str,
+        page: i64,
+        num: i64,
+        credential: Option<Credential>,
+    ) -> Paged<UserRelationListResponse> {
         Paged::new(
             self.login_cgi(
                 "music.concern.RelationList",
@@ -156,17 +160,35 @@ impl UserApi {
     }
 
     /// Followed singers.
-    pub fn get_follow_singers(&self, euin: &str, page: i64, num: i64, credential: Option<Credential>) -> Paged<UserRelationListResponse> {
+    pub fn get_follow_singers(
+        &self,
+        euin: &str,
+        page: i64,
+        num: i64,
+        credential: Option<Credential>,
+    ) -> Paged<UserRelationListResponse> {
         self.relation("GetFollowSingerList", euin, page, num, credential)
     }
 
     /// Fans.
-    pub fn get_fans(&self, euin: &str, page: i64, num: i64, credential: Option<Credential>) -> Paged<UserRelationListResponse> {
+    pub fn get_fans(
+        &self,
+        euin: &str,
+        page: i64,
+        num: i64,
+        credential: Option<Credential>,
+    ) -> Paged<UserRelationListResponse> {
         self.relation("GetFansList", euin, page, num, credential)
     }
 
     /// Followed users.
-    pub fn get_follow_user(&self, euin: &str, page: i64, num: i64, credential: Option<Credential>) -> Paged<UserRelationListResponse> {
+    pub fn get_follow_user(
+        &self,
+        euin: &str,
+        page: i64,
+        num: i64,
+        credential: Option<Credential>,
+    ) -> Paged<UserRelationListResponse> {
         self.relation("GetFollowUserList", euin, page, num, credential)
     }
 
@@ -187,17 +209,23 @@ impl UserApi {
     }
 
     /// Playlists created by `uin`.
-    pub fn get_created_songlist(&self, uin: i64, credential: Option<Credential>) -> CgiRequest<UserCreatedSonglistResponse> {
-        self.cgi(
-            "music.musicasset.PlaylistBaseRead",
-            "GetPlaylistByUin",
-            json!({"uin": uin.to_string()}),
-        )
-        .credential_opt(credential)
+    pub fn get_created_songlist(
+        &self,
+        uin: i64,
+        credential: Option<Credential>,
+    ) -> CgiRequest<UserCreatedSonglistResponse> {
+        self.cgi("music.musicasset.PlaylistBaseRead", "GetPlaylistByUin", json!({"uin": uin.to_string()}))
+            .credential_opt(credential)
     }
 
     /// Liked songs of `euin` (offset pagination).
-    pub fn get_fav_song(&self, euin: &str, page: i64, num: i64, credential: Option<Credential>) -> Paged<GetSonglistDetailResponse> {
+    pub fn get_fav_song(
+        &self,
+        euin: &str,
+        page: i64,
+        num: i64,
+        credential: Option<Credential>,
+    ) -> Paged<GetSonglistDetailResponse> {
         Paged::new(
             self.cgi(
                 "music.srfDissInfo.DissInfo",
@@ -222,7 +250,13 @@ impl UserApi {
     }
 
     /// Favourite playlists of `euin` (offset pagination).
-    pub fn get_fav_songlist(&self, euin: &str, page: i64, num: i64, credential: Option<Credential>) -> Paged<UserFavSonglistResponse> {
+    pub fn get_fav_songlist(
+        &self,
+        euin: &str,
+        page: i64,
+        num: i64,
+        credential: Option<Credential>,
+    ) -> Paged<UserFavSonglistResponse> {
         Paged::new(
             self.cgi(
                 "music.musicasset.PlaylistFavRead",
@@ -238,9 +272,7 @@ impl UserApi {
     }
 
     async fn playlist_fav_write(&self, method: &str, songlist_id: i64, credential: Option<Credential>) -> Result<bool> {
-        let uin = credential
-            .as_ref()
-            .map_or_else(|| self.client.credential().encrypt_uin, |c| c.encrypt_uin.clone());
+        let uin = credential.as_ref().map_or_else(|| self.client.credential().encrypt_uin, |c| c.encrypt_uin.clone());
         let data: Value = self
             .login_cgi(
                 "music.musicasset.PlaylistFavWrite",
@@ -268,7 +300,13 @@ impl UserApi {
     }
 
     /// Favourite albums of `euin` (offset pagination).
-    pub fn get_fav_album(&self, euin: &str, page: i64, num: i64, credential: Option<Credential>) -> Paged<UserFavAlbumResponse> {
+    pub fn get_fav_album(
+        &self,
+        euin: &str,
+        page: i64,
+        num: i64,
+        credential: Option<Credential>,
+    ) -> Paged<UserFavAlbumResponse> {
         Paged::new(
             self.cgi(
                 "music.musicasset.AlbumFavRead",
@@ -284,7 +322,13 @@ impl UserApi {
     }
 
     /// Favourite MVs of `euin`.
-    pub fn get_fav_mv(&self, euin: &str, page: i64, num: i64, credential: Option<Credential>) -> CgiRequest<UserFavMvResponse> {
+    pub fn get_fav_mv(
+        &self,
+        euin: &str,
+        page: i64,
+        num: i64,
+        credential: Option<Credential>,
+    ) -> CgiRequest<UserFavMvResponse> {
         self.login_cgi(
             "music.musicasset.MVFavRead",
             "getMyFavMV_v2",
@@ -295,23 +339,24 @@ impl UserApi {
 
     /// Music gene report of `euin`.
     pub fn get_music_gene(&self, euin: &str, credential: Option<Credential>) -> CgiRequest<UserMusicGeneResponse> {
-        self.cgi(
-            "music.recommend.UserProfileSettingSvr",
-            "GetProfileReport",
-            json!({"VisitAccount": euin}),
-        )
-        .credential_opt(credential)
+        self.cgi("music.recommend.UserProfileSettingSvr", "GetProfileReport", json!({"VisitAccount": euin}))
+            .credential_opt(credential)
     }
 
     /// Dislike list (signed request, continuation pagination).
-    pub fn get_dislike_list(&self, kind: DislikeListKind, page: i64, lastid: i64, credential: Option<Credential>) -> Paged<DislikeListData> {
+    pub fn get_dislike_list(
+        &self,
+        kind: DislikeListKind,
+        page: i64,
+        lastid: i64,
+        credential: Option<Credential>,
+    ) -> Paged<DislikeListData> {
         let mut param = json!({"Cmd": kind.cmd(), "Page": page});
         if lastid != 0 {
             param[kind.lastid_key()] = json!(lastid);
         }
         Paged::new(
-            self.login_cgi("music.feedback.FeedbackBlack", "GetDislikeList", param, credential)
-                .sign(true),
+            self.login_cgi("music.feedback.FeedbackBlack", "GetDislikeList", param, credential).sign(true),
             FnStrategy(|params: &Value, r: &DislikeListData| {
                 if r.singers.is_empty() && r.songs.is_empty() && r.styles.is_empty() {
                     return None;
@@ -342,7 +387,12 @@ impl UserApi {
     }
 
     /// Remove items from the dislike list.
-    pub async fn cancel_dislike(&self, kind: DislikeType, values: &[i64], credential: Option<Credential>) -> Result<bool> {
+    pub async fn cancel_dislike(
+        &self,
+        kind: DislikeType,
+        values: &[i64],
+        credential: Option<Credential>,
+    ) -> Result<bool> {
         let data: Value = self
             .login_cgi("music.feedback.FeedbackBlack", "CancelDislike", dislike_body(kind, values), credential)
             .send()

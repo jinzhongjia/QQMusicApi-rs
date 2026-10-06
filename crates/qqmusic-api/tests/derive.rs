@@ -32,10 +32,7 @@ fn alias_priority_and_shared_keys() {
 #[test]
 fn defaults_and_nulls() {
     let singer: Singer = from_value(&json!({"id": null})).unwrap();
-    assert_eq!(
-        singer,
-        Singer { id: 0, mid: String::new(), name: String::new(), title: String::new() }
-    );
+    assert_eq!(singer, Singer { id: 0, mid: String::new(), name: String::new(), title: String::new() });
 }
 
 #[derive(Debug, FromJson)]

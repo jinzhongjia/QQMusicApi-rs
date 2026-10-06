@@ -124,10 +124,7 @@ impl QrLoginResult {
 
     /// Successful login.
     pub fn done(credential: Credential) -> Self {
-        Self {
-            event: QrCodeLoginEvent::Done,
-            credential: Some(credential),
-        }
+        Self { event: QrCodeLoginEvent::Done, credential: Some(credential) }
     }
 
     /// Whether the login succeeded.

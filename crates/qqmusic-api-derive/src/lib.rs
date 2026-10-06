@@ -26,8 +26,8 @@ use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
 use syn::{
-    Data, DeriveInput, Expr, Fields, GenericParam, LitStr, Path, Token, parenthesized,
-    parse_macro_input, parse_quote, punctuated::Punctuated, spanned::Spanned,
+    Data, DeriveInput, Expr, Fields, GenericParam, LitStr, Path, Token, parenthesized, parse_macro_input, parse_quote,
+    punctuated::Punctuated, spanned::Spanned,
 };
 
 /// Derive `qqmusic_api::json::FromJson` for a struct with named fields.
@@ -139,10 +139,7 @@ fn parse_field_attrs(field: &syn::Field) -> syn::Result<FieldAttrs> {
         })?;
     }
     if attrs.required && attrs.default.is_some() {
-        return Err(syn::Error::new(
-            field.span(),
-            "`required` and `default` are mutually exclusive",
-        ));
+        return Err(syn::Error::new(field.span(), "`required` and `default` are mutually exclusive"));
     }
     Ok(attrs)
 }
@@ -162,15 +159,10 @@ fn validate_path(lit: &LitStr) -> syn::Result<()> {
             }
             rest = &stripped[end..];
         } else if let Some(stripped) = rest.strip_prefix('[') {
-            let end = stripped
-                .find(']')
-                .ok_or_else(|| syn::Error::new(lit.span(), "unterminated `[` in JSONPath"))?;
+            let end = stripped.find(']').ok_or_else(|| syn::Error::new(lit.span(), "unterminated `[` in JSONPath"))?;
             let inner = &stripped[..end];
             if inner != "*" && inner.parse::<i64>().is_err() {
-                return Err(syn::Error::new(
-                    lit.span(),
-                    "only `[*]` and `[<index>]` are supported in JSONPath",
-                ));
+                return Err(syn::Error::new(lit.span(), "only `[*]` and `[<index>]` are supported in JSONPath"));
             }
             rest = &stripped[end + 1..];
         } else {
@@ -182,10 +174,7 @@ fn validate_path(lit: &LitStr) -> syn::Result<()> {
 
 fn expand(input: DeriveInput) -> syn::Result<TokenStream2> {
     let container = parse_container_attrs(&input)?;
-    let krate: Path = container
-        .krate
-        .clone()
-        .unwrap_or_else(|| parse_quote!(::qqmusic_api));
+    let krate: Path = container.krate.clone().unwrap_or_else(|| parse_quote!(::qqmusic_api));
     let name = &input.ident;
     let name_str = name.to_string();
 
@@ -193,17 +182,11 @@ fn expand(input: DeriveInput) -> syn::Result<TokenStream2> {
         Data::Struct(data) => match &data.fields {
             Fields::Named(named) => &named.named,
             _ => {
-                return Err(syn::Error::new(
-                    input.span(),
-                    "FromJson only supports structs with named fields",
-                ));
+                return Err(syn::Error::new(input.span(), "FromJson only supports structs with named fields"));
             }
         },
         _ => {
-            return Err(syn::Error::new(
-                input.span(),
-                "FromJson only supports structs",
-            ));
+            return Err(syn::Error::new(input.span(), "FromJson only supports structs"));
         }
     };
 
@@ -258,14 +241,13 @@ fn expand(input: DeriveInput) -> syn::Result<TokenStream2> {
             None => quote! { <#ty as #krate::json::FromJson>::from_json },
         };
 
-        let use_trait_default =
-            matches!(attrs.default, Some(DefaultKind::Trait)) || (container.default && !attrs.required && attrs.default.is_none());
+        let use_trait_default = matches!(attrs.default, Some(DefaultKind::Trait))
+            || (container.default && !attrs.required && attrs.default.is_none());
 
         let (missing, default_init) = match &attrs.default {
-            Some(DefaultKind::Expr(expr)) => (
-                quote! { ::core::convert::Into::into(#expr) },
-                quote! { ::core::convert::Into::into(#expr) },
-            ),
+            Some(DefaultKind::Expr(expr)) => {
+                (quote! { ::core::convert::Into::into(#expr) }, quote! { ::core::convert::Into::into(#expr) })
+            }
             _ if use_trait_default => (
                 quote! {
                     <#ty as #krate::json::FromJson>::json_default()

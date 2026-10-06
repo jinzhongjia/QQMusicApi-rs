@@ -330,7 +330,9 @@ mod tests {
 
     #[test]
     fn comment_models() {
-        let count: CommentCountResponse = from_value(&json!({"response": {"biz_id": "1", "count": 99, "icon_list": [{"txt": "t"}]}, "cmTabType": 2})).unwrap();
+        let count: CommentCountResponse =
+            from_value(&json!({"response": {"biz_id": "1", "count": 99, "icon_list": [{"txt": "t"}]}, "cmTabType": 2}))
+                .unwrap();
         assert_eq!((count.count, count.cm_tab_type, count.icon_list[0].txt.as_str()), (99, 2, "t"));
         let list: CommentListResponse = from_value(&json!({
             "CommentList": {"Comments": [{"CmId": "c", "SeqNo": "s", "Content": "hi", "VipUI": {"a": 1}}], "HasMore": 1, "Total": 5, "CommentIds": ["c"]},
@@ -340,7 +342,9 @@ mod tests {
         assert_eq!(list.comments[0].seq_no, "s");
         assert_eq!(list.comment_ids, vec!["c"]);
         assert_eq!((list.has_more, list.total, list.total_cm_num), (1, 5, 5));
-        let moment: MomentCommentResponse = from_value(&json!({"CmList": [{"CmId": "m"}], "HasMore": 1, "NextPos": "p", "MapCmExt": {"m": {"x": 1}}})).unwrap();
+        let moment: MomentCommentResponse =
+            from_value(&json!({"CmList": [{"CmId": "m"}], "HasMore": 1, "NextPos": "p", "MapCmExt": {"m": {"x": 1}}}))
+                .unwrap();
         assert_eq!(moment.next_pos, "p");
         assert_eq!(moment.map_cm_ext["m"]["x"], 1);
         let added: AddCommentResponse = from_value(&json!({"AddedCmId": "n", "Floor": {"Num": 3}})).unwrap();

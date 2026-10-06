@@ -8,6 +8,7 @@ use futures::stream::{self, BoxStream, StreamExt};
 use serde_json::{Value, json};
 use tokio::time::{Instant, sleep, sleep_until, timeout_at};
 
+use crate::FromJson;
 use crate::credential::Credential;
 use crate::error::{ApiError, ApiErrorKind, Error, Result};
 use crate::models::login::{
@@ -19,13 +20,11 @@ use crate::response::RawPayload;
 use crate::transport::{Body, Method};
 use crate::utils::{hash33, now_millis, now_secs};
 use crate::versioning::Platform;
-use crate::FromJson;
 
 /// Codes returned as data (instead of errors) by login endpoints so they can
 /// be mapped to login specific errors.
-pub const LOGIN_ERROR_CODES: [i64; 12] = [
-    1000, 104_401, 104_400, 20_261, 20_271, 20_272, 20_274, 20_277, 20_278, 20_279, 20_450, 104_604,
-];
+pub const LOGIN_ERROR_CODES: [i64; 12] =
+    [1000, 104_401, 104_400, 20_261, 20_271, 20_272, 20_274, 20_277, 20_278, 20_279, 20_450, 104_604];
 
 const QQ_APPID: &str = "716027609";
 const QQ_3RD_AID: &str = "100497308";
@@ -168,11 +167,7 @@ impl Default for PollInterval {
 
 impl From<Duration> for PollInterval {
     fn from(default: Duration) -> Self {
-        Self {
-            default,
-            scanned: None,
-            error: None,
-        }
+        Self { default, scanned: None, error: None }
     }
 }
 
@@ -191,23 +186,20 @@ impl LoginApi {
         let target = credential.unwrap_or_else(|| self.client.credential());
         if self.client.platform() == Platform::Web {
             let musicid = target.musicid.to_string();
-            let spec = HttpSpec::new(
-                Method::Get,
-                "https://c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg",
-            )
-            .query([
-                ("g_tk", hash33(&target.musickey, 5381).to_string()),
-                ("format", "json".into()),
-                ("inCharset", "utf-8".into()),
-                ("outCharset", "utf-8".into()),
-                ("notice", "0".into()),
-                ("cid", "205360838".into()),
-                ("needNewCode", "0".into()),
-                ("loginUin", musicid.clone()),
-                ("hostUin", "0".into()),
-                ("userid", musicid),
-                ("reqfrom", "1".into()),
-            ]);
+            let spec = HttpSpec::new(Method::Get, "https://c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg")
+                .query([
+                    ("g_tk", hash33(&target.musickey, 5381).to_string()),
+                    ("format", "json".into()),
+                    ("inCharset", "utf-8".into()),
+                    ("outCharset", "utf-8".into()),
+                    ("notice", "0".into()),
+                    ("cid", "205360838".into()),
+                    ("needNewCode", "0".into()),
+                    ("loginUin", musicid.clone()),
+                    ("hostUin", "0".into()),
+                    ("userid", musicid),
+                    ("reqfrom", "1".into()),
+                ]);
             let resp: Value = self.client.http(spec).credential(target).send().await?;
             return Ok(resp.get("code").and_then(Value::as_i64) != Some(0));
         }
@@ -225,11 +217,8 @@ impl LoginApi {
     pub async fn refresh_credential(&self, credential: Option<Credential>) -> Result<Credential> {
         let update_client = credential.is_none();
         let target = credential.unwrap_or_else(|| self.client.credential());
-        let str_musicid = if target.str_musicid.is_empty() {
-            target.musicid.to_string()
-        } else {
-            target.str_musicid.clone()
-        };
+        let str_musicid =
+            if target.str_musicid.is_empty() { target.musicid.to_string() } else { target.str_musicid.clone() };
         let param = match target.login_type {
             1 => json!({
                 "openid": target.openid,
@@ -270,9 +259,9 @@ impl LoginApi {
             .send()
             .await?;
         let refreshed = credential_from(data).map_err(|err| match err {
-            Error::Api(api) if matches!(api.kind, ApiErrorKind::Login(_)) => {
-                Error::from(ApiError::new(ApiErrorKind::CredentialRefresh, api.code, api.data).with_message(api.message))
-            }
+            Error::Api(api) if matches!(api.kind, ApiErrorKind::Login(_)) => Error::from(
+                ApiError::new(ApiErrorKind::CredentialRefresh, api.code, api.data).with_message(api.message),
+            ),
             other => other,
         })?;
         if update_client {
@@ -317,7 +306,11 @@ impl LoginApi {
     /// Yields [`QrCodeLoginEvent::Scan`] once subscribed, then the pushed
     /// events until a terminal one. `deadline` turns into a
     /// [`QrCodeLoginEvent::Timeout`] event.
-    pub fn mobile_qrcode_events(&self, qrcode: &QrCode, deadline: Option<Instant>) -> BoxStream<'static, Result<QrLoginResult>> {
+    pub fn mobile_qrcode_events(
+        &self,
+        qrcode: &QrCode,
+        deadline: Option<Instant>,
+    ) -> BoxStream<'static, Result<QrLoginResult>> {
         let state = MobilePoll {
             api: self.clone(),
             qrcode_id: qrcode.identifier.clone(),
@@ -384,12 +377,7 @@ impl LoginApi {
 
     /// High level SMS login flow.
     pub fn phone_session(&self, phone: impl Into<PhoneNumber>, country_code: u32) -> PhoneLoginSession {
-        PhoneLoginSession {
-            api: self.clone(),
-            phone: phone.into(),
-            country_code,
-            last_result: None,
-        }
+        PhoneLoginSession { api: self.clone(), phone: phone.into(), country_code, last_result: None }
     }
 
     async fn get_qq_qr(&self) -> Result<QrCode> {
@@ -407,17 +395,8 @@ impl LoginApi {
             ])
             .header("Referer", PTLOGIN_REFERER);
         let payload: RawPayload = self.client.http(spec).send().await?;
-        let qrsig = payload
-            .cookies
-            .get("qrsig")
-            .cloned()
-            .ok_or_else(|| Error::api_data("获取 qrsig 失败"))?;
-        Ok(QrCode {
-            data: payload.content,
-            qr_type: QrLoginType::Qq,
-            mimetype: "image/png".into(),
-            identifier: qrsig,
-        })
+        let qrsig = payload.cookies.get("qrsig").cloned().ok_or_else(|| Error::api_data("获取 qrsig 失败"))?;
+        Ok(QrCode { data: payload.content, qr_type: QrLoginType::Qq, mimetype: "image/png".into(), identifier: qrsig })
     }
 
     async fn get_wx_qr(&self) -> Result<QrCode> {
@@ -454,11 +433,7 @@ impl LoginApi {
             (profile.ct, profile.cv)
         };
         let mut request = self
-            .cgi::<Value>(
-                "music.login.LoginServer",
-                "CreateQRCode",
-                json!({"tmeAppID": "qqmusic", "ct": ct, "cv": cv}),
-            )
+            .cgi::<Value>("music.login.LoginServer", "CreateQRCode", json!({"tmeAppID": "qqmusic", "ct": ct, "cv": cv}))
             .comm("ct", "23")
             .comm("cv", "0");
         if platform == Platform::Web {
@@ -478,12 +453,7 @@ impl LoginApi {
         let image = base64::engine::general_purpose::STANDARD
             .decode(encoded.trim())
             .map_err(|err| Error::api_data(format!("二维码解码失败: {err}")))?;
-        Ok(QrCode {
-            data: image,
-            qr_type: QrLoginType::Mobile,
-            mimetype: "image/png".into(),
-            identifier: qrcode_id,
-        })
+        Ok(QrCode { data: image, qr_type: QrLoginType::Mobile, mimetype: "image/png".into(), identifier: qrcode_id })
     }
 
     async fn check_qq_qr(&self, qrcode: &QrCode) -> Result<QrLoginResult> {
@@ -516,9 +486,7 @@ impl LoginApi {
         };
         let text = payload.text();
         let args = parse_ptui_cb(&text).ok_or_else(|| Error::api_data("获取二维码状态失败: 无法解析响应"))?;
-        let code = args
-            .first()
-            .ok_or_else(|| Error::api_data("获取二维码状态失败: 无法解析状态参数"))?;
+        let code = args.first().ok_or_else(|| Error::api_data("获取二维码状态失败: 无法解析状态参数"))?;
         if code.is_empty() || !code.bytes().all(|b| b.is_ascii_digit()) {
             return Err(Error::api_data("获取二维码状态失败: 无效的状态码"));
         }
@@ -526,9 +494,7 @@ impl LoginApi {
         if event != QrCodeLoginEvent::Done {
             return Ok(QrLoginResult::event(event));
         }
-        let url = args
-            .get(2)
-            .ok_or_else(|| Error::api_data("获取登录凭据失败: 缺少必要参数"))?;
+        let url = args.get(2).ok_or_else(|| Error::api_data("获取登录凭据失败: 缺少必要参数"))?;
         let sigx = capture(url, "ptsigx=", "&s_url", &['?', '&']);
         let uin = capture(url, "uin=", "&service", &['?', '&']);
         let (Some(sigx), Some(uin)) = (sigx, uin) else {
@@ -539,10 +505,7 @@ impl LoginApi {
 
     async fn check_wx_qr(&self, qrcode: &QrCode) -> Result<QrLoginResult> {
         let spec = HttpSpec::new(Method::Get, "https://lp.open.weixin.qq.com/connect/l/qrconnect")
-            .query([
-                ("uuid", qrcode.identifier.clone()),
-                ("_", (now_secs() * 1000).to_string()),
-            ])
+            .query([("uuid", qrcode.identifier.clone()), ("_", (now_secs() * 1000).to_string())])
             .header("Referer", "https://open.weixin.qq.com/");
         let result = self
             .client
@@ -557,7 +520,8 @@ impl LoginApi {
             Err(err) => return Err(err),
         };
         let text = payload.text();
-        let (errcode, wx_code) = parse_wx_status(&text).ok_or_else(|| Error::api_data("获取二维码状态失败: 无法解析响应"))?;
+        let (errcode, wx_code) =
+            parse_wx_status(&text).ok_or_else(|| Error::api_data("获取二维码状态失败: 无法解析响应"))?;
         let event = event_from_code(errcode)?;
         if event != QrCodeLoginEvent::Done {
             return Ok(QrLoginResult::event(event));
@@ -643,7 +607,12 @@ impl LoginApi {
         credential_from(data)
     }
 
-    async fn handle_mobile_message(&self, qrcode_id: &str, event_type: Option<&str>, payload: Option<Value>) -> Result<Option<QrLoginResult>> {
+    async fn handle_mobile_message(
+        &self,
+        qrcode_id: &str,
+        event_type: Option<&str>,
+        payload: Option<Value>,
+    ) -> Result<Option<QrLoginResult>> {
         let event = match event_type {
             Some("scanned") => QrCodeLoginEvent::Conf,
             Some("canceled") => QrCodeLoginEvent::Refuse,
@@ -663,9 +632,7 @@ impl LoginApi {
                 let (Some(uin), Some(key)) = (cookie("qqmusic_uin"), cookie("qqmusic_key")) else {
                     return Err(Error::api_data("获取登录凭据失败: 缺少必要参数"));
                 };
-                let musicid: i64 = uin
-                    .parse()
-                    .map_err(|_| Error::api_data(format!("无效的 qqmusic_uin: {uin}")))?;
+                let musicid: i64 = uin.parse().map_err(|_| Error::api_data(format!("无效的 qqmusic_uin: {uin}")))?;
                 let data = self
                     .login_cgi(
                         "music.login.LoginServer",
@@ -794,11 +761,9 @@ impl MobilePoll {
             };
             let event_type = message.properties.get("type").cloned();
             let payload = message.json();
-            let handled = before(
-                self.deadline,
-                self.api.handle_mobile_message(&self.qrcode_id, event_type.as_deref(), payload),
-            )
-            .await;
+            let handled =
+                before(self.deadline, self.api.handle_mobile_message(&self.qrcode_id, event_type.as_deref(), payload))
+                    .await;
             match handled {
                 None => return self.finish(timeout_event()).await,
                 Some(Err(err)) => return self.finish(Err(err)).await,

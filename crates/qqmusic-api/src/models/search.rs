@@ -529,12 +529,15 @@ mod tests {
         assert_eq!(items[0].as_song().unwrap().song.mid, "m");
         assert_eq!(items[0].as_song().unwrap().new_status, 2);
 
-        let singers: SearchByTypeResponse = from_value(&json!({"body": {"singer": [{"singerMID": "x", "singerPic": "p", "songNum": 3}]}})).unwrap();
+        let singers: SearchByTypeResponse =
+            from_value(&json!({"body": {"singer": [{"singerMID": "x", "singerPic": "p", "songNum": 3}]}})).unwrap();
         match &singers.into_items()[0] {
             SearchItem::Singer(s) => assert_eq!((s.singer.mid.as_str(), s.pic.as_str(), s.song_num), ("x", "p", 3)),
             other => panic!("unexpected {other:?}"),
         }
-        let albums: SearchByTypeResponse = from_value(&json!({"body": {"item_audio": [{"albumMID": "a", "core_album_config": {"album_type": 5}}]}})).unwrap();
+        let albums: SearchByTypeResponse =
+            from_value(&json!({"body": {"item_audio": [{"albumMID": "a", "core_album_config": {"album_type": 5}}]}}))
+                .unwrap();
         match &albums.into_items()[0] {
             SearchItem::Album(a) => assert_eq!((a.album.mid.as_str(), a.r#type), ("a", 5)),
             other => panic!("unexpected {other:?}"),
@@ -543,9 +546,11 @@ mod tests {
         assert!(matches!(&users.into_items()[0], SearchItem::User(_)));
         let empty: SearchByTypeResponse = from_value(&json!({})).unwrap();
         assert!(empty.into_items().is_empty());
-        let mvs: SearchByTypeResponse = from_value(&json!({"body": {"item_mv": [{"vid": "v", "singername": "n"}]}})).unwrap();
+        let mvs: SearchByTypeResponse =
+            from_value(&json!({"body": {"item_mv": [{"vid": "v", "singername": "n"}]}})).unwrap();
         assert!(matches!(&mvs.into_items()[0], SearchItem::Mv(m) if m.singer_name == "n"));
-        let lists: SearchByTypeResponse = from_value(&json!({"body": {"item_songlist": [{"dissid": 3, "nickname": "n"}]}})).unwrap();
+        let lists: SearchByTypeResponse =
+            from_value(&json!({"body": {"item_songlist": [{"dissid": 3, "nickname": "n"}]}})).unwrap();
         assert!(matches!(&lists.into_items()[0], SearchItem::SongList(l) if l.songlist.id == 3));
     }
 
@@ -559,7 +564,8 @@ mod tests {
         assert_eq!(res.song.items[0].song.id, 1);
         assert_eq!(res.related.items[0].search, "s");
         assert_eq!(res.nextpage_start["a"], 1);
-        let quick: QuickSearchResponse = from_value(&json!({"data": {"song": {"count": 1, "itemlist": [{"mid": "m", "id": 12}]}}})).unwrap();
+        let quick: QuickSearchResponse =
+            from_value(&json!({"data": {"song": {"count": 1, "itemlist": [{"mid": "m", "id": 12}]}}})).unwrap();
         assert_eq!(quick.song.itemlist[0].id, "12");
         let hot: HotkeyResponse = from_value(&json!({"vec_hotkey": [{"query": "q"}]})).unwrap();
         assert_eq!(hot.vec_hotkey[0].jump_tab, "0");

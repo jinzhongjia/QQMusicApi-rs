@@ -44,7 +44,10 @@ mod tests {
         assert_eq!(client.top().get_category().await.unwrap().group[0].id, 1);
         assert_eq!(last_req0(&mock)["method"], "GetAll");
 
-        push_cgi(&mock, json!({"data": {"totalNum": 3}, "songInfoList": [{"id": 1, "mid": "a"}, {"id": 2, "mid": "b"}]}));
+        push_cgi(
+            &mock,
+            json!({"data": {"totalNum": 3}, "songInfoList": [{"id": 1, "mid": "a"}, {"id": 2, "mid": "b"}]}),
+        );
         push_cgi(&mock, json!({"data": {"totalNum": 3}, "songInfoList": [{"id": 3, "mid": "c"}]}));
         let songs = client.top().get_detail(26, 2, 1, true).collect_items(None).await.unwrap();
         assert_eq!(songs.len(), 3);

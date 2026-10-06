@@ -35,11 +35,7 @@ pub fn parse_session(data: &Value, now: i64) -> Result<SessionRecord> {
         Some(Value::String(s)) if !s.is_empty() => s.clone(),
         _ => return Err(Error::api_data("Android Session 响应缺少有效的 sid")),
     };
-    Ok(SessionRecord {
-        uid,
-        sid,
-        saved_at: now,
-    })
+    Ok(SessionRecord { uid, sid, saved_at: now })
 }
 
 /// Daily Android session cache.

@@ -78,9 +78,7 @@ pub fn private_ip_for_device(android_id: &str) -> String {
 }
 
 fn random_hex(rng: &mut impl Rng, alphabet: &[u8], len: usize) -> String {
-    (0..len)
-        .map(|_| char::from(alphabet[rng.random_range(0..alphabet.len())]))
-        .collect()
+    (0..len).map(|_| char::from(alphabet[rng.random_range(0..alphabet.len())])).collect()
 }
 
 /// Random beacon id source string.
@@ -109,16 +107,8 @@ pub fn random_beacon_id() -> String {
 pub fn device_payload(device: &Device, version: &str, sdk_version: &str) -> Value {
     let fixed_rand: i64 = rand::rng().random_range(0..=14_400);
     let (y, mo, d, h, mi, s) = utc_datetime(now_secs() - fixed_rand);
-    let harmony = if device.vendor_os_name.to_lowercase().starts_with("harmonyos") {
-        "1"
-    } else {
-        "0"
-    };
-    let manufacturer = if device.manufacturer.is_empty() {
-        &device.brand
-    } else {
-        &device.manufacturer
-    };
+    let harmony = if device.vendor_os_name.to_lowercase().starts_with("harmonyos") { "1" } else { "0" };
+    let manufacturer = if device.manufacturer.is_empty() { &device.brand } else { &device.manufacturer };
     let reserved = json!({
         "harmony": harmony,
         "clone": "0",
@@ -179,24 +169,11 @@ pub fn build_qimei_request(device: &Device, version: &str, sdk_version: &str) ->
     };
     let ts = now_secs();
     let key = STANDARD.encode(rsa_encrypt(crypt_key.as_bytes())?);
-    let crypt_key_bytes: [u8; 16] = crypt_key
-        .as_bytes()
-        .try_into()
-        .map_err(|_| Error::invalid_argument("invalid crypt key"))?;
-    let params = STANDARD.encode(aes_encrypt(
-        &crypt_key_bytes,
-        payload.to_string().as_bytes(),
-        None,
-    ));
+    let crypt_key_bytes: [u8; 16] =
+        crypt_key.as_bytes().try_into().map_err(|_| Error::invalid_argument("invalid crypt key"))?;
+    let params = STANDARD.encode(aes_encrypt(&crypt_key_bytes, payload.to_string().as_bytes(), None));
     let millis = (ts * 1000).to_string();
-    let req_sign = calc_md5([
-        key.as_str(),
-        params.as_str(),
-        millis.as_str(),
-        nonce.as_str(),
-        SECRET,
-        EXTRA,
-    ]);
+    let req_sign = calc_md5([key.as_str(), params.as_str(), millis.as_str(), nonce.as_str(), SECRET, EXTRA]);
     let body = json!({
         "app": 0,
         "os": 1,
@@ -225,8 +202,7 @@ pub fn build_qimei_request(device: &Device, version: &str, sdk_version: &str) ->
 
 /// Parse the QIMEI service response body.
 pub fn parse_qimei_response(body: &[u8]) -> Result<Qimei> {
-    let outer: Value = serde_json::from_slice(body)
-        .map_err(|_| Error::api_data("QIMEI response is not valid JSON"))?;
+    let outer: Value = serde_json::from_slice(body).map_err(|_| Error::api_data("QIMEI response is not valid JSON"))?;
     let inner = match outer.get("data") {
         Some(Value::String(text)) => serde_json::from_str::<Value>(text)
             .map_err(|_| Error::api_data_with("QIMEI response data is not valid JSON", outer.clone()))?,
@@ -234,14 +210,8 @@ pub fn parse_qimei_response(body: &[u8]) -> Result<Qimei> {
         None => Value::Null,
     };
     let data = inner.get("data").cloned().unwrap_or(Value::Null);
-    match (
-        data.get("q16").and_then(Value::as_str),
-        data.get("q36").and_then(Value::as_str),
-    ) {
-        (Some(q16), Some(q36)) => Ok(Qimei {
-            q16: q16.to_string(),
-            q36: q36.to_string(),
-        }),
+    match (data.get("q16").and_then(Value::as_str), data.get("q36").and_then(Value::as_str)) {
+        (Some(q16), Some(q36)) => Ok(Qimei { q16: q16.to_string(), q36: q36.to_string() }),
         _ => Err(Error::api_data_with("QIMEI response missing required fields", outer)),
     }
 }
@@ -269,12 +239,7 @@ impl std::fmt::Debug for QimeiProvider {
 impl QimeiProvider {
     /// Create a provider.
     pub fn new(devices: Arc<DeviceStore>, profile: VersionProfile, transport: Arc<dyn Transport>) -> Self {
-        Self {
-            devices,
-            profile,
-            transport,
-            state: Mutex::new(State::default()),
-        }
+        Self { devices, profile, transport, state: Mutex::new(State::default()) }
     }
 
     /// Get the cached QIMEI or request a new one.
@@ -295,11 +260,7 @@ impl QimeiProvider {
             return Ok(qimei);
         }
         let device = self.devices.get().await?;
-        let request = build_qimei_request(
-            &device,
-            &self.profile.qimei_app_version,
-            &self.profile.qimei_sdk_version,
-        )?;
+        let request = build_qimei_request(&device, &self.profile.qimei_app_version, &self.profile.qimei_sdk_version)?;
         let response = self.transport.send(request).await?;
         if response.status != 200 {
             return Err(Error::Http {

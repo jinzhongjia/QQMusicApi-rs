@@ -64,7 +64,8 @@ impl FromStr for Platform {
 }
 
 /// Default desktop/web browser user agent.
-pub const BROWSER_USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+pub const BROWSER_USER_AGENT: &str =
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 
 /// Version parameters of one platform.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -124,11 +125,7 @@ impl VersionProfile {
 
     /// Default Android profile.
     pub fn android() -> Self {
-        Self {
-            v: Some(20_090_008),
-            ua_version: Some(20_090_008),
-            ..Self::new(11, 20_090_008)
-        }
+        Self { v: Some(20_090_008), ua_version: Some(20_090_008), ..Self::new(11, 20_090_008) }
     }
 
     /// Default desktop profile.
@@ -138,10 +135,7 @@ impl VersionProfile {
 
     /// Default web profile.
     pub fn web() -> Self {
-        Self {
-            platform: Some("yqq.json".to_string()),
-            ..Self::new(24, 4_747_474)
-        }
+        Self { platform: Some("yqq.json".to_string()), ..Self::new(24, 4_747_474) }
     }
 
     /// Set `ct`.
@@ -201,11 +195,7 @@ pub struct VersionPolicy {
 
 impl Default for VersionPolicy {
     fn default() -> Self {
-        Self {
-            android: VersionProfile::android(),
-            desktop: VersionProfile::desktop(),
-            web: VersionProfile::web(),
-        }
+        Self { android: VersionProfile::android(), desktop: VersionProfile::desktop(), web: VersionProfile::web() }
     }
 }
 
@@ -246,11 +236,7 @@ impl VersionPolicy {
 
     /// `g_tk` derived from the `musickey`.
     pub fn g_tk(credential: &Credential) -> i64 {
-        if credential.musickey.is_empty() {
-            5381
-        } else {
-            hash33(&credential.musickey, 5381)
-        }
+        if credential.musickey.is_empty() { 5381 } else { hash33(&credential.musickey, 5381) }
     }
 
     /// Build the `comm` block for a platform.
@@ -267,14 +253,8 @@ impl VersionPolicy {
                     .put("tmeAppID", "qqmusic")
                     .put("chid", "10003505")
                     .put_opt("qq", musicid)
-                    .put_opt(
-                        "authst",
-                        (!credential.musickey.is_empty()).then_some(&credential.musickey),
-                    )
-                    .put_opt(
-                        "tmeLoginType",
-                        (credential.login_type != 0).then_some(credential.login_type),
-                    )
+                    .put_opt("authst", (!credential.musickey.is_empty()).then_some(&credential.musickey))
+                    .put_opt("tmeLoginType", (credential.login_type != 0).then_some(credential.login_type))
                     .put("QIMEI36", ctx.qimei.map(|q| q.q36.as_str()).unwrap_or_default())
                     .put("traceid", format!("10002_{uid_part}_{}", now_secs()))
                     .put("OpenUDID", ctx.guid)
@@ -369,8 +349,19 @@ mod tests {
         assert_eq!(
             keys(&comm),
             vec![
-                "ct", "cv", "v", "tmeAppID", "chid", "QIMEI36", "traceid", "OpenUDID", "OpenUDID2",
-                "udid", "aid", "os_ver", "phonetype"
+                "ct",
+                "cv",
+                "v",
+                "tmeAppID",
+                "chid",
+                "QIMEI36",
+                "traceid",
+                "OpenUDID",
+                "OpenUDID2",
+                "udid",
+                "aid",
+                "os_ver",
+                "phonetype"
             ]
         );
         assert_eq!(comm["ct"], "11");
@@ -390,13 +381,7 @@ mod tests {
         let session = SessionRecord { uid: "u".into(), sid: "s".into(), saved_at: 0 };
         let comm = policy.build_comm(
             Platform::Android,
-            CommContext {
-                credential: &cred,
-                device: &device,
-                qimei: Some(&qimei),
-                guid: "g",
-                session: Some(&session),
-            },
+            CommContext { credential: &cred, device: &device, qimei: Some(&qimei), guid: "g", session: Some(&session) },
         );
         assert_eq!(comm["qq"], "123");
         assert_eq!(comm["authst"], "W_X_key");
@@ -424,8 +409,18 @@ mod tests {
         assert_eq!(
             keys(&web),
             vec![
-                "ct", "cv", "platform", "chid", "uin", "g_tk", "g_tk_new_20200303", "format",
-                "inCharset", "outCharset", "notice", "need_new_code"
+                "ct",
+                "cv",
+                "platform",
+                "chid",
+                "uin",
+                "g_tk",
+                "g_tk_new_20200303",
+                "format",
+                "inCharset",
+                "outCharset",
+                "notice",
+                "need_new_code"
             ]
         );
         assert_eq!(web["uin"], "0");

@@ -206,9 +206,12 @@ mod tests {
 
     #[test]
     fn recommend_models() {
-        let feed: RecommendFeedCardResponse = from_value(&json!({"v_shelf": [{"id": 1, "v_niche": [{"id": 2, "v_card": [{}]}]}]})).unwrap();
+        let feed: RecommendFeedCardResponse =
+            from_value(&json!({"v_shelf": [{"id": 1, "v_niche": [{"id": 2, "v_card": [{}]}]}]})).unwrap();
         assert_eq!(feed.shelves[0].niches[0].cards.len(), 1);
-        let radar: RadarRecommendResponse = from_value(&json!({"VecSongs": [{"Track": {"id": 1, "mid": "a"}}], "HasMore": true, "TimeStamp": 5})).unwrap();
+        let radar: RadarRecommendResponse =
+            from_value(&json!({"VecSongs": [{"Track": {"id": 1, "mid": "a"}}], "HasMore": true, "TimeStamp": 5}))
+                .unwrap();
         assert!(radar.has_more);
         assert_eq!(radar.songs[0].mid, "a");
         let lists: RecommendSonglistResponse = from_value(&json!({
@@ -218,7 +221,9 @@ mod tests {
         .unwrap();
         let first = &lists.songlists[0];
         assert_eq!((first.id, first.picurl.as_str(), first.listennum, first.creator_nick.as_str()), (7, "u", 10, "n"));
-        let new: RecommendNewSongResponse = from_value(&json!({"songlist": [{"id": 1, "mid": "a"}], "type": 5, "songTagInfoList": [{"tag": "x"}]})).unwrap();
+        let new: RecommendNewSongResponse =
+            from_value(&json!({"songlist": [{"id": 1, "mid": "a"}], "type": 5, "songTagInfoList": [{"tag": "x"}]}))
+                .unwrap();
         assert_eq!((new.r#type, new.song_tags[0].tag.as_str()), (5, "x"));
     }
 }

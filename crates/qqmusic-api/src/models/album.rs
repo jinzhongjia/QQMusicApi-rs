@@ -155,7 +155,9 @@ mod tests {
         assert_eq!(detail.album.album_type, "录音室专辑");
         assert_eq!(detail.company.id, 2);
         assert_eq!(detail.singers[0].mid, "s");
-        let songs: GetAlbumSongResponse = from_value(&json!({"albumMid": "m", "totalNum": 2, "songList": [{"songInfo": {"id": 1, "mid": "a"}}]})).unwrap();
+        let songs: GetAlbumSongResponse =
+            from_value(&json!({"albumMid": "m", "totalNum": 2, "songList": [{"songInfo": {"id": 1, "mid": "a"}}]}))
+                .unwrap();
         assert_eq!(songs.into_items()[0].mid, "a");
         let fav: AlbumFavWriteResponse = from_value(&json!({"result": 0, "v_failedAlbumId": [3]})).unwrap();
         assert!(!fav.success());

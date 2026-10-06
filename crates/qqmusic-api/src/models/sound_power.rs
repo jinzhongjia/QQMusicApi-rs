@@ -231,14 +231,18 @@ mod tests {
 
     #[test]
     fn sound_power_models() {
-        let detail: SoundPowerDetailResponse = from_value(&json!({"powerInfo": {"level": 3, "isHugeVip": true}, "todayLT": 60, "medalInfo": null})).unwrap();
+        let detail: SoundPowerDetailResponse =
+            from_value(&json!({"powerInfo": {"level": 3, "isHugeVip": true}, "todayLT": 60, "medalInfo": null}))
+                .unwrap();
         assert_eq!(detail.power_info.level, 3);
         assert!(detail.power_info.is_huge_vip);
         assert_eq!(detail.today_listen_time, 60);
         assert!(detail.medal_info.is_none());
-        let rank: FriendRankResponse = from_value(&json!({"ranks": [{"uin": "1", "spInfo": {"a": 1}}], "has_more": 1})).unwrap();
+        let rank: FriendRankResponse =
+            from_value(&json!({"ranks": [{"uin": "1", "spInfo": {"a": 1}}], "has_more": 1})).unwrap();
         assert_eq!(rank.ranks[0].sp_info["a"], 1);
-        let medal: SoundPowerMedalEntryResponse = from_value(&json!({"MedalCnt": 2, "MedalList": [{"PicURL": "u"}]})).unwrap();
+        let medal: SoundPowerMedalEntryResponse =
+            from_value(&json!({"MedalCnt": 2, "MedalList": [{"PicURL": "u"}]})).unwrap();
         assert_eq!(medal.medal_list[0].pic_url, "u");
         let tasks: ActTaskModulesResponse = from_value(&json!({"retCode": 0, "taskModules": [{}]})).unwrap();
         assert_eq!(tasks.task_modules.unwrap().len(), 1);

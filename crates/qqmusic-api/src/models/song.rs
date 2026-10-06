@@ -499,10 +499,14 @@ mod tests {
         assert!(has.has_guitar && !has.has_more);
         let fav: GetFavNumResponse = from_value(&json!({"m_numbers": {"1": 10}, "m_show": {"1": "10"}})).unwrap();
         assert_eq!(fav.numbers["1"], 10);
-        let cdn: GetCdnDispatchResponse = from_value(&json!({"sip": ["https://a/"], "keepalivefile": "k", "refreshTime": 1, "sipinfo": [{"plaintextquic": 1}]})).unwrap();
+        let cdn: GetCdnDispatchResponse = from_value(
+            &json!({"sip": ["https://a/"], "keepalivefile": "k", "refreshTime": 1, "sipinfo": [{"plaintextquic": 1}]}),
+        )
+        .unwrap();
         assert_eq!(cdn.test_file, "k");
         assert_eq!(cdn.sipinfo[0].plaintext_quic, 1);
-        let producer: GetProducerResponse = from_value(&json!({"Lst": [{"Title": "t", "Producers": [{"Name": "n", "Type": 1}]}]})).unwrap();
+        let producer: GetProducerResponse =
+            from_value(&json!({"Lst": [{"Title": "t", "Producers": [{"Name": "n", "Type": 1}]}]})).unwrap();
         assert_eq!(producer.data[0].producers[0].name, "n");
     }
 }

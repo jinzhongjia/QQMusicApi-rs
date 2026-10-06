@@ -94,12 +94,7 @@ impl ApiError {
             ApiErrorKind::SignatureRequired => "请求需要签名".to_string(),
             ApiErrorKind::Login(kind) => kind.default_message().to_string(),
         };
-        Self {
-            kind,
-            code,
-            message,
-            data,
-        }
+        Self { kind, code, message, data }
     }
 
     /// Override the message.
@@ -114,10 +109,7 @@ impl ApiError {
         let kind = match code {
             2000 => ApiErrorKind::SignatureRequired,
             2001 => ApiErrorKind::Ratelimited {
-                feedback_url: data
-                    .get("feedbackURL")
-                    .and_then(Value::as_str)
-                    .map(str::to_string),
+                feedback_url: data.get("feedbackURL").and_then(Value::as_str).map(str::to_string),
             },
             1000 | 104_400 | 104_401 => ApiErrorKind::CredentialExpired,
             _ => ApiErrorKind::Cgi,
@@ -156,28 +148,17 @@ pub struct TransportError {
 impl TransportError {
     /// Generic transport error.
     pub fn new(message: impl Into<String>) -> Self {
-        Self {
-            message: message.into(),
-            timeout: false,
-            connect: false,
-            source: None,
-        }
+        Self { message: message.into(), timeout: false, connect: false, source: None }
     }
 
     /// Timeout error.
     pub fn timeout(message: impl Into<String>) -> Self {
-        Self {
-            timeout: true,
-            ..Self::new(message)
-        }
+        Self { timeout: true, ..Self::new(message) }
     }
 
     /// Connection error.
     pub fn connect(message: impl Into<String>) -> Self {
-        Self {
-            connect: true,
-            ..Self::new(message)
-        }
+        Self { connect: true, ..Self::new(message) }
     }
 
     /// Attach the underlying error.
@@ -248,18 +229,12 @@ impl From<JsonError> for Error {
 impl Error {
     /// Malformed response helper.
     pub fn api_data(message: impl Into<String>) -> Self {
-        Self::ApiData {
-            message: message.into(),
-            data: None,
-        }
+        Self::ApiData { message: message.into(), data: None }
     }
 
     /// Malformed response helper with payload.
     pub fn api_data_with(message: impl Into<String>, data: Value) -> Self {
-        Self::ApiData {
-            message: message.into(),
-            data: Some(Box::new(data)),
-        }
+        Self::ApiData { message: message.into(), data: Some(Box::new(data)) }
     }
 
     /// Invalid argument helper.
@@ -293,10 +268,7 @@ impl Error {
 
     /// Whether risk control was triggered.
     pub fn is_ratelimited(&self) -> bool {
-        matches!(
-            self.as_api().map(|e| &e.kind),
-            Some(ApiErrorKind::Ratelimited { .. })
-        )
+        matches!(self.as_api().map(|e| &e.kind), Some(ApiErrorKind::Ratelimited { .. }))
     }
 
     /// Whether this is a network timeout.
@@ -317,14 +289,8 @@ impl Error {
                 connect: err.connect,
                 source: None,
             }),
-            Self::Http { status, message } => Self::Http {
-                status: *status,
-                message: message.clone(),
-            },
-            Self::ApiData { message, data } => Self::ApiData {
-                message: message.clone(),
-                data: data.clone(),
-            },
+            Self::Http { status, message } => Self::Http { status: *status, message: message.clone() },
+            Self::ApiData { message, data } => Self::ApiData { message: message.clone(), data: data.clone() },
             Self::Api(err) => Self::Api(err.clone()),
             Self::Model(err) => Self::Model(err.clone()),
             Self::InvalidArgument(msg) => Self::InvalidArgument(msg.clone()),
@@ -344,12 +310,7 @@ mod tests {
     fn cgi_code_mapping() {
         assert_eq!(ApiError::from_cgi_code(2000, json!({})).kind, ApiErrorKind::SignatureRequired);
         let rl = ApiError::from_cgi_code(2001, json!({"feedbackURL": "https://x"}));
-        assert_eq!(
-            rl.kind,
-            ApiErrorKind::Ratelimited {
-                feedback_url: Some("https://x".into())
-            }
-        );
+        assert_eq!(rl.kind, ApiErrorKind::Ratelimited { feedback_url: Some("https://x".into()) });
         assert_eq!(rl.to_string(), "触发风控, 需登录或者安全验证");
         for code in [1000, 104_400, 104_401] {
             assert_eq!(ApiError::from_cgi_code(code, Value::Null).kind, ApiErrorKind::CredentialExpired);

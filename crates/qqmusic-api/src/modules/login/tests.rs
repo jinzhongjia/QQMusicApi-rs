@@ -25,20 +25,11 @@ fn api_kind(err: &Error) -> &ApiErrorKind {
 }
 
 fn qq_qr(sig: &str) -> QrCode {
-    QrCode {
-        data: vec![],
-        qr_type: QrLoginType::Qq,
-        mimetype: "image/png".into(),
-        identifier: sig.into(),
-    }
+    QrCode { data: vec![], qr_type: QrLoginType::Qq, mimetype: "image/png".into(), identifier: sig.into() }
 }
 
 fn wx_qr() -> QrCode {
-    QrCode {
-        qr_type: QrLoginType::Wx,
-        mimetype: "image/jpeg".into(),
-        ..qq_qr("uuid1")
-    }
+    QrCode { qr_type: QrLoginType::Wx, mimetype: "image/jpeg".into(), ..qq_qr("uuid1") }
 }
 
 fn ptui(code: &str) -> Response {
@@ -178,7 +169,12 @@ async fn qq_qrcode_flow() {
     mock.push_response(Response::new(200, ""));
     assert!(client.login().get_qrcode(QrLoginType::Qq).await.is_err());
 
-    for (code, event) in [("66", QrCodeLoginEvent::Scan), ("67", QrCodeLoginEvent::Conf), ("65", QrCodeLoginEvent::Timeout), ("68", QrCodeLoginEvent::Refuse)] {
+    for (code, event) in [
+        ("66", QrCodeLoginEvent::Scan),
+        ("67", QrCodeLoginEvent::Conf),
+        ("65", QrCodeLoginEvent::Timeout),
+        ("68", QrCodeLoginEvent::Refuse),
+    ] {
         mock.push_response(ptui(code));
         assert_eq!(client.login().check_qrcode(&qr).await.unwrap().event, event);
     }
@@ -187,7 +183,9 @@ async fn qq_qrcode_flow() {
     assert_eq!(request.cookies()["qrsig"], "SIG");
 
     mock.push_response(Response::new(400, ""));
-    assert!(matches!(client.login().check_qrcode(&qr).await, Err(Error::ApiData { ref message, .. }) if message == "无效 qrsig"));
+    assert!(
+        matches!(client.login().check_qrcode(&qr).await, Err(Error::ApiData { ref message, .. }) if message == "无效 qrsig")
+    );
     mock.push_response(Response::new(200, "garbage"));
     assert!(client.login().check_qrcode(&qr).await.is_err());
     mock.push_response(ptui("x"));
@@ -299,10 +297,7 @@ fn mqtt_client(connector: &MockConnector) -> (Client, MockTransport) {
     let client = Client::builder()
         .transport(mock.clone())
         .device(Device::generate(Some(DeviceProfile::Vivo), Some(1)))
-        .qimei(QimeiMode::Fixed(Qimei {
-            q16: "q16".into(),
-            q36: "q36".into(),
-        }))
+        .qimei(QimeiMode::Fixed(Qimei { q16: "q16".into(), q36: "q36".into() }))
         .android_session(false)
         .rate_limit(None)
         .mqtt_connector(Arc::new(connector.clone()))
@@ -363,10 +358,7 @@ async fn mobile_qrcode_flow() {
 async fn mobile_qrcode_failures() {
     let connector = MockConnector::default();
     let (client, _mock) = mqtt_client(&connector);
-    let qr = QrCode {
-        qr_type: QrLoginType::Mobile,
-        ..qq_qr("ID")
-    };
+    let qr = QrCode { qr_type: QrLoginType::Mobile, ..qq_qr("ID") };
     connector.push_script(vec![mqtt_ready(), encode_publish_for_test("t", b"{}", 0, None, &[("type", "canceled")])]);
     let events: Vec<_> = client.login().mobile_qrcode_events(&qr, None).collect().await;
     assert_eq!(events.last().unwrap().as_ref().unwrap().event, QrCodeLoginEvent::Refuse);
@@ -394,12 +386,10 @@ async fn mobile_qrcode_failures() {
 async fn mobile_deadline_while_listening() {
     let connector = MockConnector::default();
     let (client, _mock) = mqtt_client(&connector);
-    let qr = QrCode {
-        qr_type: QrLoginType::Mobile,
-        ..qq_qr("ID")
-    };
+    let qr = QrCode { qr_type: QrLoginType::Mobile, ..qq_qr("ID") };
     connector.push_script(vec![mqtt_ready()]);
-    let mut session = client.login().qrcode_session(QrLoginType::Mobile).with_qrcode(qr).timeout(Duration::from_secs(10));
+    let mut session =
+        client.login().qrcode_session(QrLoginType::Mobile).with_qrcode(qr).timeout(Duration::from_secs(10));
     let events: Vec<_> = session.events().await.unwrap().collect().await;
     let kinds: Vec<_> = events.iter().map(|e| e.as_ref().unwrap().event).collect();
     assert_eq!(kinds, vec![QrCodeLoginEvent::Scan, QrCodeLoginEvent::Timeout]);
@@ -450,11 +440,8 @@ async fn qr_session_polls_dedupes_and_backs_off() {
     mock.push_error(TransportError::connect("blip"));
     mock.push_response(ptui("67"));
     mock.push_response(ptui("68"));
-    let mut session = client
-        .login()
-        .qrcode_session(QrLoginType::Qq)
-        .with_qrcode(qq_qr("S"))
-        .interval(Duration::from_secs(2));
+    let mut session =
+        client.login().qrcode_session(QrLoginType::Qq).with_qrcode(qq_qr("S")).interval(Duration::from_secs(2));
     let start = Instant::now();
     let events: Vec<_> = session.events().await.unwrap().collect().await;
     let kinds: Vec<_> = events.iter().map(|e| e.as_ref().unwrap().event).collect();
@@ -480,11 +467,8 @@ async fn qr_session_polls_dedupes_and_backs_off() {
 async fn qr_session_timeout_and_done() {
     let (client, mock) = mock_client();
     mock.route_url("ptqrlogin", |_| Ok(ptui("66")));
-    let mut session = client
-        .login()
-        .qrcode_session(QrLoginType::Qq)
-        .with_qrcode(qq_qr("S"))
-        .timeout(Duration::from_secs(5));
+    let mut session =
+        client.login().qrcode_session(QrLoginType::Qq).with_qrcode(qq_qr("S")).timeout(Duration::from_secs(5));
     let events: Vec<_> = session.events().await.unwrap().collect().await;
     let kinds: Vec<_> = events.iter().map(|e| e.as_ref().unwrap().event).collect();
     assert_eq!(kinds, vec![QrCodeLoginEvent::Scan, QrCodeLoginEvent::Timeout]);

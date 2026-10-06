@@ -14,10 +14,7 @@ pub(crate) fn mock_client() -> (Client, MockTransport) {
     let client = Client::builder()
         .transport(mock.clone())
         .device(Device::generate(Some(DeviceProfile::Vivo), Some(1)))
-        .qimei(QimeiMode::Fixed(Qimei {
-            q16: "q16".into(),
-            q36: "q36".into(),
-        }))
+        .qimei(QimeiMode::Fixed(Qimei { q16: "q16".into(), q36: "q36".into() }))
         .android_session(false)
         .rate_limit(None)
         .build()
@@ -33,7 +30,9 @@ pub(crate) fn logged_in_client() -> (Client, MockTransport) {
 }
 
 /// CGI envelope answering every `req_N` with `data`.
-pub(crate) fn reply_all(data: Value) -> impl Fn(&Request) -> Result<Response, crate::transport::TransportError> + Send + Sync + 'static {
+pub(crate) fn reply_all(
+    data: Value,
+) -> impl Fn(&Request) -> Result<Response, crate::transport::TransportError> + Send + Sync + 'static {
     move |req: &Request| {
         let body = req.json_body().unwrap_or_default();
         let mut out = Map::new();
@@ -64,7 +63,5 @@ pub(crate) fn last_req0(mock: &MockTransport) -> Value {
 
 /// JSON body of the last request.
 pub(crate) fn last_body(mock: &MockTransport) -> Value {
-    mock.last_request()
-        .and_then(|r| r.json_body())
-        .expect("last request with JSON body")
+    mock.last_request().and_then(|r| r.json_body()).expect("last request with JSON body")
 }
