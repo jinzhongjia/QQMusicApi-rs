@@ -10,8 +10,8 @@ use std::time::Duration;
 use aes::Aes128;
 use base64::Engine as _;
 use base64::engine::general_purpose::STANDARD;
-use cbc::cipher::{BlockEncryptMut, KeyIvInit, block_padding::Pkcs7};
-use rand::Rng;
+use cbc::cipher::{BlockModeEncrypt, KeyIvInit, block_padding::Pkcs7};
+use rand::{Rng, RngExt};
 use rsa::pkcs8::DecodePublicKey;
 use rsa::{Pkcs1v15Encrypt, RsaPublicKey};
 use serde_json::{Value, json};
@@ -47,7 +47,7 @@ pub const QIMEI_FAILURE_BACKOFF: Duration = Duration::from_secs(300);
 /// AES-128-CBC with PKCS#7 padding (`iv` defaults to the key).
 pub fn aes_encrypt(key: &[u8; 16], content: &[u8], iv: Option<&[u8; 16]>) -> Vec<u8> {
     let iv = iv.unwrap_or(key);
-    cbc::Encryptor::<Aes128>::new(key.into(), iv.into()).encrypt_padded_vec_mut::<Pkcs7>(content)
+    cbc::Encryptor::<Aes128>::new(key.into(), iv.into()).encrypt_padded_vec::<Pkcs7>(content)
 }
 
 /// RSA PKCS#1 v1.5 encryption with the QIMEI public key.

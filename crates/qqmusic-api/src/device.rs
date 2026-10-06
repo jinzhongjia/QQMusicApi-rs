@@ -13,7 +13,7 @@ use std::str::FromStr;
 use std::sync::Arc;
 
 use rand::rngs::StdRng;
-use rand::{Rng, RngCore, SeedableRng};
+use rand::{Rng, RngExt, SeedableRng};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 use tokio::sync::Mutex;
@@ -244,14 +244,14 @@ pub fn random_imei(rng: &mut impl Rng) -> String {
     digits.iter().chain(std::iter::once(&check)).map(|d| char::from_digit(*d, 10).unwrap_or('0')).collect()
 }
 
-fn random_mac(rng: &mut impl RngCore) -> String {
+fn random_mac(rng: &mut impl Rng) -> String {
     let mut octets = [0u8; 6];
     octets[0] = 2;
     rng.fill_bytes(&mut octets[1..]);
     octets.iter().map(|o| format!("{o:02X}")).collect::<Vec<_>>().join(":")
 }
 
-fn random_uuid_v4(rng: &mut impl RngCore) -> [u8; 16] {
+fn random_uuid_v4(rng: &mut impl Rng) -> [u8; 16] {
     let mut bytes = [0u8; 16];
     rng.fill_bytes(&mut bytes);
     bytes[6] = (bytes[6] & 0x0F) | 0x40;
@@ -272,7 +272,7 @@ impl Device {
     pub fn generate(profile: Option<DeviceProfile>, seed: Option<u64>) -> Self {
         let mut rng = match seed {
             Some(seed) => StdRng::seed_from_u64(seed),
-            None => StdRng::from_os_rng(),
+            None => StdRng::from_rng(&mut rand::rng()),
         };
         let profile = profile.unwrap_or_else(|| DeviceProfile::ALL[rng.random_range(0..DeviceProfile::ALL.len())]);
         let data = profile_data(profile);

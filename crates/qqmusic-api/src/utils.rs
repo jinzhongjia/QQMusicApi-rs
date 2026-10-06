@@ -3,7 +3,7 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use md5::{Digest, Md5};
-use rand::Rng;
+use rand::RngExt;
 use serde_json::Value;
 
 /// Current unix timestamp in seconds.
