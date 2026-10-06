@@ -91,6 +91,7 @@ macro_rules! api_module {
 }
 pub mod album;
 pub mod comment;
+pub mod helper;
 pub mod login;
 pub mod lyric;
 pub mod mv;
@@ -113,6 +114,11 @@ impl Client {
     /// Comment APIs.
     pub fn comment(&self) -> comment::CommentApi {
         comment::CommentApi::new(self)
+    }
+
+    /// File upload APIs.
+    pub fn helper(&self) -> helper::HelperApi {
+        helper::HelperApi::new(self)
     }
 
     /// Login APIs.

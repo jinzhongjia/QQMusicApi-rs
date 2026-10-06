@@ -38,7 +38,7 @@ aes = "0.8"
 cbc = { version = "0.1", features = ["alloc"] }
 rsa = "0.9"
 thiserror = "2"
-tokio = { version = "1", features = ["sync", "time", "macros", "rt"] }
+tokio = { version = "1", features = ["sync", "time", "macros", "rt", "fs"] }
 tracing = "0.1"
 url = "2"
 reqwest = { version = "0.13", optional = true, default-features = false, features = ["rustls", "gzip", "deflate", "brotli", "http2", "charset", "stream"] }

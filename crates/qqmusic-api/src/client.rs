@@ -331,7 +331,7 @@ pub(crate) struct Inner {
     qimei_mode: QimeiMode,
     qimei: Option<QimeiProvider>,
     session: Option<AndroidSessionManager>,
-    transport: Arc<dyn Transport>,
+    pub(crate) transport: Arc<dyn Transport>,
     limiter: Option<TokenBucket>,
     semaphore: Semaphore,
     headers: Vec<(String, String)>,
