@@ -1,6 +1,8 @@
 //! Response models.
 
+pub mod album;
 pub mod base;
+pub mod lyric;
 pub mod search;
 pub mod song;
 
