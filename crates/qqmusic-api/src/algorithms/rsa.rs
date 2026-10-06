@@ -123,7 +123,7 @@ impl RsaPublicKey {
     }
 
     /// `m^e mod n` as a `k`-byte big-endian string.
-    fn raw_public(&self, message: &[u8]) -> Vec<u8> {
+    pub(crate) fn raw_public(&self, message: &[u8]) -> Vec<u8> {
         let c = BigUint::from_bytes_be(message).modpow(&self.e, &self.n).to_bytes_be();
         let mut out = vec![0u8; self.k - c.len()];
         out.extend_from_slice(&c);
@@ -163,6 +163,38 @@ mod tests {
         }
         // Randomized padding.
         assert_ne!(key.encrypt_pkcs1v15(b"x").unwrap(), key.encrypt_pkcs1v15(b"x").unwrap());
+    }
+
+    #[test]
+    fn ciphertext_keeps_leading_zero_bytes() {
+        // Work backwards from small ciphertexts: c = (c^d)^e mod n. A naive
+        // `to_bytes_be()` would return fewer than k bytes here.
+        let n = BigUint::from_bytes_be(&hex::decode(N).unwrap());
+        let d = BigUint::from_bytes_be(&hex::decode(D).unwrap());
+        let key = RsaPublicKey::new(&hex::decode(N).unwrap(), &[1, 0, 1]).unwrap();
+        for (c, leading_zeros) in [(BigUint::from(5u8), 127), (&n >> 8u32, 1)] {
+            let m = c.modpow(&d, &n).to_bytes_be();
+            let cipher = key.raw_public(&m);
+            assert_eq!(cipher.len(), 128);
+            assert!(cipher[..leading_zeros].iter().all(|&b| b == 0));
+            assert_ne!(cipher[leading_zeros], 0);
+            assert_eq!(BigUint::from_bytes_be(&cipher), c);
+        }
+    }
+
+    #[test]
+    fn randomized_round_trip_over_all_lengths() {
+        let key = RsaPublicKey::new(&hex::decode(N).unwrap(), &[1, 0, 1]).unwrap();
+        let mut rng = rand::rng();
+        for len in (0..=117).chain(0..=117) {
+            let message: Vec<u8> = (0..len).map(|_| rng.random_range(0..=u8::MAX)).collect();
+            let em = decrypt_raw(&key.encrypt_pkcs1v15(&message).unwrap());
+            let ps = &em[2..128 - len - 1];
+            assert_eq!(&em[..2], &[0x00, 0x02]);
+            assert!(ps.len() >= 8 && ps.iter().all(|&b| b != 0), "non-zero padding of at least 8 bytes");
+            assert_eq!(em[128 - len - 1], 0x00);
+            assert_eq!(&em[128 - len..], &message[..]);
+        }
     }
 
     #[test]
