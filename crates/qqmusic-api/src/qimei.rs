@@ -344,6 +344,109 @@ mod tests {
         );
     }
 
+    /// Replace `qimeiParams.key` and re-sign the request.
+    fn with_key(request: &Request, key: &str) -> Request {
+        let Body::Json(bytes) = &request.body else { panic!("json body") };
+        let mut body: Value = serde_json::from_slice(bytes).unwrap();
+        let p = &mut body["qimeiParams"];
+        let millis = (p["time"].as_str().unwrap().parse::<i64>().unwrap() * 1000).to_string();
+        let sign = calc_md5([
+            key,
+            p["params"].as_str().unwrap(),
+            millis.as_str(),
+            p["nonce"].as_str().unwrap(),
+            SECRET,
+            EXTRA,
+        ]);
+        p["key"] = key.into();
+        p["sign"] = sign.into();
+        let mut request = request.clone();
+        request.body = Body::json(&body);
+        request
+    }
+
+    #[test]
+    fn with_key_resigns_identically() {
+        let device = Device::generate(Some(DeviceProfile::Oppo), Some(1));
+        let request = build_qimei_request(&device, "14.0", "1.0").unwrap();
+        let Body::Json(bytes) = &request.body else { panic!("json body") };
+        let key = serde_json::from_slice::<Value>(bytes).unwrap()["qimeiParams"]["key"].as_str().unwrap().to_string();
+        assert_eq!(with_key(&request, &key), request);
+    }
+
+    /// Negative controls against the real server: it must reject requests
+    /// whose RSA-wrapped AES key is wrong or garbage. This proves the server
+    /// really RSA-decrypts `key`, so the passing positive cases show it
+    /// accepts our PKCS#1 v1.5 output.
+    #[cfg(feature = "reqwest-transport")]
+    #[tokio::test]
+    #[ignore = "requires network"]
+    async fn live_server_really_decrypts_the_rsa_key() {
+        use crate::transport::{ReqwestTransport, TransportConfig};
+
+        let transport = ReqwestTransport::new(&TransportConfig::default()).unwrap();
+        let profile = VersionProfile::android();
+        let fresh = || build_qimei_request(&Device::random(), &profile.qimei_app_version, &profile.qimei_sdk_version);
+        let original_key = |request: &Request| {
+            let Body::Json(bytes) = &request.body else { panic!("json body") };
+            serde_json::from_slice::<Value>(bytes).unwrap()["qimeiParams"]["key"].as_str().unwrap().to_string()
+        };
+        let mut outcomes = Vec::new();
+        for round in 0..3 {
+            let normal = fresh().unwrap();
+            let resigned = {
+                let request = fresh().unwrap();
+                with_key(&request, &original_key(&request))
+            };
+            let wrong_aes_key =
+                with_key(&fresh().unwrap(), &STANDARD.encode(rsa_encrypt(b"0000000000000000").unwrap()));
+            let garbage = with_key(&fresh().unwrap(), &STANDARD.encode([0x5a_u8; 128]));
+            for (name, request, expect_ok) in [
+                ("normal", normal, true),
+                ("resigned", resigned, true),
+                ("wrong_aes_key", wrong_aes_key, false),
+                ("garbage", garbage, false),
+            ] {
+                let response = transport.send(request).await.unwrap();
+                let parsed = parse_qimei_response(&response.body);
+                println!(
+                    "round {round} {name:<14} status={} ok={} body={}",
+                    response.status,
+                    parsed.is_ok(),
+                    String::from_utf8_lossy(&response.body).chars().take(160).collect::<String>()
+                );
+                outcomes.push((name, parsed.is_ok() == expect_ok));
+            }
+        }
+        assert!(outcomes.iter().all(|(_, as_expected)| *as_expected), "{outcomes:?}");
+    }
+
+    /// Modulus of the upstream PEM as parsed by OpenSSL (cryptography 50).
+    const PROD_N: &str = "c4231830a2eb5fc2827170641e79d80fec51bda9a22e4b4ab37d1f205a4ae44d928cda25879f66a3429051663312a127faf8a246bdaaf63918417e90d7c95b5908aa6a2d0f852e4a6770294a548ac1c2fe8f1f252fb826f4ac86ab9a00e7ce47d002a56e7c4b51eb889acc60ca6adbc9f72e81f4d31b1dd7464805264530ab1d";
+
+    fn production_key() -> RsaPublicKey {
+        RsaPublicKey::from_spki_der(&STANDARD.decode(PUBLIC_KEY_DER_B64).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn production_key_matches_openssl() {
+        let expected = RsaPublicKey::new(&hex::decode(PROD_N).unwrap(), &[1, 0, 1]).unwrap();
+        assert_eq!(production_key(), expected);
+        assert_eq!(production_key().size(), 128);
+    }
+
+    #[test]
+    fn production_key_known_answer() {
+        // EM = 00 02 (11 x 109) 00 "0123456789abcdef"; c = EM^65537 mod n
+        // computed with Python's independent big integers.
+        let mut em = vec![0x00, 0x02];
+        em.extend([0x11; 109]);
+        em.push(0x00);
+        em.extend(b"0123456789abcdef");
+        let expected = "a2c0a2f4fb56b99695b708354bcfe4d0a608ef9337cded7af2d32ef57b2166b5e9940e8f624ae67cba2798abf1397ee7c8d305db84fcae8fbdb496cd30aa15d4609be93846341e3d9b4e55fb260bd255029c8d88c100102cdf527c86047e5e3f39c9f5ab37c53603758793e693946ab36d483659c02bea9c2a0761e8cafde782";
+        assert_eq!(hex::encode(production_key().raw_public(&em)), expected);
+    }
+
     #[test]
     fn rsa_key_is_valid() {
         let encrypted = rsa_encrypt(b"0123456789abcdef").unwrap();
