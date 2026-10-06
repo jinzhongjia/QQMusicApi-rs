@@ -547,13 +547,48 @@ impl Client {
     }
 
     /// Execute many requests of the same type with batching.
+    ///
+    /// Requests sharing the same platform / comm overrides / credential are
+    /// merged into `musicu.fcg` calls of at most [`ClientBuilder::batch_size`]
+    /// items (default 20, like upstream) and sent concurrently. Results keep
+    /// the input order and carry their own errors, i.e. upstream's
+    /// `return_exceptions=True`; use `.into_iter().collect::<Result<Vec<_>>>()`
+    /// for fail-fast semantics.
     pub async fn gather<T, I>(&self, requests: I) -> Vec<Result<T>>
     where
         T: FromJson + Send + 'static,
         I: IntoIterator<Item = CgiRequest<T>>,
     {
+        self.gather_with_batch_size(requests, self.inner.batch_size).await
+    }
+
+    /// [`Client::gather`] with an explicit per-call batch size (upstream's
+    /// `gather(..., batch_size=n)`); `0` is treated as `1`.
+    pub async fn gather_with_batch_size<T, I>(&self, requests: I, batch_size: usize) -> Vec<Result<T>>
+    where
+        T: FromJson + Send + 'static,
+        I: IntoIterator<Item = CgiRequest<T>>,
+    {
         let specs = requests.into_iter().map(CgiRequest::into_spec).collect();
-        self.execute_cgi(specs, None).await.into_iter().map(|r| r.and_then(|value| Ok(T::from_json(&value)?))).collect()
+        self.execute_cgi(specs, Some(batch_size))
+            .await
+            .into_iter()
+            .map(|r| r.and_then(|value| Ok(T::from_json(&value)?)))
+            .collect()
+    }
+
+    /// Close the client (shared by all clones).
+    ///
+    /// Requests already in flight complete normally; queued and future
+    /// requests fail with [`Error::Closed`]. Idempotent. Connections are
+    /// released when the last clone is dropped.
+    pub fn close(&self) {
+        self.inner.semaphore.close();
+    }
+
+    /// Whether [`Client::close`] has been called.
+    pub fn is_closed(&self) -> bool {
+        self.inner.semaphore.is_closed()
     }
 
     /// Open a streaming HTTP request (e.g. to download audio).
@@ -871,6 +906,39 @@ mod tests {
         let gathered = client.gather((0..3).map(|i| client.cgi::<Value>("m", "x", json!({"i": i})))).await;
         assert_eq!(gathered.len(), 3);
         assert_eq!(gathered[2].as_ref().unwrap()["echo"]["param"]["i"], 2);
+    }
+
+    #[tokio::test]
+    async fn gather_with_explicit_batch_size() {
+        let mock = MockTransport::with_handler(echo_ok);
+        let client = client(&mock);
+        let requests = || (0..5).map(|i| client.cgi::<Value>("m", "x", json!({"i": i})));
+        let results = client.gather_with_batch_size(requests(), 2).await;
+        assert_eq!(mock.request_count(), 3);
+        assert!(results.iter().enumerate().all(|(i, r)| r.as_ref().unwrap()["echo"]["param"]["i"] == i));
+        mock.clear_requests();
+        let results = client.gather_with_batch_size(requests(), 0).await;
+        assert_eq!((results.len(), mock.request_count()), (5, 5));
+        mock.clear_requests();
+        let _ = client.gather(requests()).await;
+        assert_eq!(mock.request_count(), 1, "default batch size merges all five");
+    }
+
+    #[tokio::test]
+    async fn close_rejects_new_requests() {
+        let mock = MockTransport::with_handler(echo_ok);
+        let client = client(&mock);
+        let clone = client.clone();
+        let _: Value = client.cgi("m", "x", json!({})).send().await.unwrap();
+        assert!(!client.is_closed());
+        clone.close();
+        clone.close();
+        assert!(client.is_closed());
+        let err = client.cgi::<Value>("m", "x", json!({})).send().await.unwrap_err();
+        assert!(matches!(err, Error::Closed), "{err:?}");
+        let gathered = client.gather((0..2).map(|_| client.cgi::<Value>("m", "x", json!({})))).await;
+        assert!(gathered.iter().all(|r| matches!(r, Err(Error::Closed))));
+        assert_eq!(mock.request_count(), 1);
     }
 
     #[tokio::test]
