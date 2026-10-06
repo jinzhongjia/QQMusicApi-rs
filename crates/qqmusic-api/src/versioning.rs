@@ -440,12 +440,14 @@ mod tests {
 
     #[test]
     fn comm_overrides_add_replace_remove() {
-        let mut policy = VersionPolicy::default();
-        policy.android = VersionProfile::android()
-            .with_ct(5)
-            .with_comm("chid", "999")
-            .with_comm("phonetype", "")
-            .with_comm("extra", "1");
+        let policy = VersionPolicy {
+            android: VersionProfile::android()
+                .with_ct(5)
+                .with_comm("chid", "999")
+                .with_comm("phonetype", "")
+                .with_comm("extra", "1"),
+            ..VersionPolicy::default()
+        };
         let device = device();
         let cred = Credential::default();
         let comm = policy.build_comm(

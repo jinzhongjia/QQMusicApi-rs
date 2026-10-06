@@ -22,6 +22,38 @@ pub fn now_millis() -> i64 {
         .unwrap_or_default()
 }
 
+/// Break a unix timestamp into UTC `(year, month, day, hour, minute, second)`.
+#[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+pub fn utc_datetime(ts: i64) -> (i64, u32, u32, u32, u32, u32) {
+    let days = ts.div_euclid(86_400);
+    let secs = ts.rem_euclid(86_400);
+    // Howard Hinnant's civil_from_days.
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let day = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let month = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    let year = yoe + era * 400 + i64::from(month <= 2);
+    (
+        year,
+        month,
+        day,
+        (secs / 3600) as u32,
+        (secs % 3600 / 60) as u32,
+        (secs % 60) as u32,
+    )
+}
+
+/// Day number (days since epoch) in China Standard Time (UTC+8).
+///
+/// QQ Music servers live in UTC+8; daily session rotation follows that day.
+pub fn china_day(ts: i64) -> i64 {
+    (ts + 8 * 3600).div_euclid(86_400)
+}
+
 /// Hex encoded MD5 of the concatenation of all parts.
 pub fn calc_md5<I, T>(parts: I) -> String
 where
@@ -110,6 +142,22 @@ mod tests {
         assert_eq!(calc_md5(["a", "bc"]), calc_md5(["abc"]));
         assert_eq!(calc_md5(["abc"]), "900150983cd24fb0d6963f7d28e17f72");
         assert_eq!(calc_md5::<[&[u8]; 0], &[u8]>([]), "d41d8cd98f00b204e9800998ecf8427e");
+    }
+
+    #[test]
+    fn utc_datetime_conversion() {
+        assert_eq!(utc_datetime(0), (1970, 1, 1, 0, 0, 0));
+        assert_eq!(utc_datetime(951_782_400), (2000, 2, 29, 0, 0, 0));
+        assert_eq!(utc_datetime(1_791_266_255), (2026, 10, 6, 5, 57, 35));
+        assert_eq!(utc_datetime(-1), (1969, 12, 31, 23, 59, 59));
+    }
+
+    #[test]
+    fn china_day_boundaries() {
+        // 2026-10-06 15:59:59 UTC == 23:59:59 CST, next second is a new day.
+        let ts = 1_791_302_399;
+        assert_eq!(china_day(ts) + 1, china_day(ts + 1));
+        assert_eq!(china_day(ts), china_day(ts - 3600 * 23));
     }
 
     #[test]

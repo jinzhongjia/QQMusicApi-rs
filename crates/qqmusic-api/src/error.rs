@@ -211,14 +211,14 @@ pub enum Error {
         /// Description.
         message: String,
         /// Offending payload.
-        data: Option<Value>,
+        data: Option<Box<Value>>,
     },
     /// Error reported by the QQ Music API.
     #[error(transparent)]
-    Api(#[from] ApiError),
+    Api(Box<ApiError>),
     /// The response could not be converted into the requested model.
     #[error("response model error: {0}")]
-    Model(#[from] JsonError),
+    Model(Box<JsonError>),
     /// Invalid argument supplied by the caller.
     #[error("invalid argument: {0}")]
     InvalidArgument(String),
@@ -231,6 +231,18 @@ pub enum Error {
     /// The client has been closed.
     #[error("client is closed")]
     Closed,
+}
+
+impl From<ApiError> for Error {
+    fn from(err: ApiError) -> Self {
+        Self::Api(Box::new(err))
+    }
+}
+
+impl From<JsonError> for Error {
+    fn from(err: JsonError) -> Self {
+        Self::Model(Box::new(err))
+    }
 }
 
 impl Error {
@@ -246,7 +258,7 @@ impl Error {
     pub fn api_data_with(message: impl Into<String>, data: Value) -> Self {
         Self::ApiData {
             message: message.into(),
-            data: Some(data),
+            data: Some(Box::new(data)),
         }
     }
 
@@ -290,6 +302,36 @@ impl Error {
     /// Whether this is a network timeout.
     pub fn is_timeout(&self) -> bool {
         matches!(self, Self::Network(err) if err.timeout)
+    }
+
+    /// Best-effort copy (error sources are flattened into messages).
+    ///
+    /// Used when one failure (e.g. a failed batch request) has to be
+    /// reported for several requests.
+    pub fn duplicate(&self) -> Self {
+        match self {
+            Self::CredentialInvalid(msg) => Self::CredentialInvalid(msg.clone()),
+            Self::Network(err) => Self::Network(TransportError {
+                message: err.message.clone(),
+                timeout: err.timeout,
+                connect: err.connect,
+                source: None,
+            }),
+            Self::Http { status, message } => Self::Http {
+                status: *status,
+                message: message.clone(),
+            },
+            Self::ApiData { message, data } => Self::ApiData {
+                message: message.clone(),
+                data: data.clone(),
+            },
+            Self::Api(err) => Self::Api(err.clone()),
+            Self::Model(err) => Self::Model(err.clone()),
+            Self::InvalidArgument(msg) => Self::InvalidArgument(msg.clone()),
+            Self::Qrc(err) => Self::api_data(err.to_string()),
+            Self::Io(err) => Self::Io(std::io::Error::new(err.kind(), err.to_string())),
+            Self::Closed => Self::Closed,
+        }
     }
 }
 

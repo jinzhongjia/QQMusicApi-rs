@@ -55,7 +55,7 @@ mod tests {
 
     #[test]
     fn deterministic() {
-        assert_eq!(zzc_sign("abc"), zzc_sign(b"abc".to_vec()));
+        assert_eq!(zzc_sign("abc"), zzc_sign(b"abc"));
         assert_ne!(zzc_sign("abc"), zzc_sign("abd"));
     }
 }

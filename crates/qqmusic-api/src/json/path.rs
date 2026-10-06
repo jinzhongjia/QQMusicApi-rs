@@ -38,7 +38,8 @@ fn parse(expr: &str) -> Option<Vec<Segment<'_>>> {
             }
             segments.push(Segment::Key(&stripped[..end]));
             rest = &stripped[end..];
-        } else if let Some(stripped) = rest.strip_prefix('[') {
+        } else {
+            let stripped = rest.strip_prefix('[')?;
             let end = stripped.find(']')?;
             let inner = stripped[..end].trim();
             if inner == "*" {
@@ -47,8 +48,6 @@ fn parse(expr: &str) -> Option<Vec<Segment<'_>>> {
                 segments.push(Segment::Index(inner.parse().ok()?));
             }
             rest = &stripped[end + 1..];
-        } else {
-            return None;
         }
     }
     Some(segments)
