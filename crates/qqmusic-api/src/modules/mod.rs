@@ -91,6 +91,7 @@ macro_rules! api_module {
 }
 pub mod album;
 pub mod comment;
+pub mod login;
 pub mod lyric;
 pub mod mv;
 pub mod recommend;
@@ -111,6 +112,11 @@ impl Client {
     /// Comment APIs.
     pub fn comment(&self) -> comment::CommentApi {
         comment::CommentApi::new(self)
+    }
+
+    /// Login APIs.
+    pub fn login(&self) -> login::LoginApi {
+        login::LoginApi::new(self)
     }
 
     /// Lyric APIs.

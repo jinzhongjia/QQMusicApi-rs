@@ -3,6 +3,7 @@
 pub mod album;
 pub mod base;
 pub mod comment;
+pub mod login;
 pub mod lyric;
 pub mod mv;
 pub mod recommend;
