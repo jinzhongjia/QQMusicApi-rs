@@ -107,6 +107,14 @@ macro_rules! cgi_builder_methods {
             self
         }
 
+        /// Use `credential` when `Some` (otherwise the client credential).
+        pub fn credential_opt(mut self, credential: Option<Credential>) -> Self {
+            if credential.is_some() {
+                self.spec.credential = credential;
+            }
+            self
+        }
+
         /// Emulate a specific platform for this request.
         pub fn platform(mut self, platform: Platform) -> Self {
             self.spec.platform = Some(platform);

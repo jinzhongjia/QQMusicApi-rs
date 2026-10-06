@@ -60,13 +60,9 @@ impl AlbumApi {
     }
 
     fn fav_write(&self, method: &str, ids: &[i64], credential: Option<Credential>) -> CgiRequest<AlbumFavWriteResponse> {
-        let request = self
-            .cgi("music.musicasset.AlbumFavWrite", method, json!({"v_albumId": ids}))
-            .require_login(true);
-        match credential {
-            Some(credential) => request.credential(credential),
-            None => request,
-        }
+        self.cgi("music.musicasset.AlbumFavWrite", method, json!({"v_albumId": ids}))
+            .require_login(true)
+            .credential_opt(credential)
     }
 }
 

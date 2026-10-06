@@ -424,7 +424,7 @@ impl SongApi {
         } else {
             ("music.vkey.GetVkey", "UrlGetVkey")
         };
-        let mut request = self
+        let request = self
             .cgi(
                 module,
                 method,
@@ -437,10 +437,8 @@ impl SongApi {
                     "ctx": 0,
                 }),
             )
-            .bypass(true);
-        if let Some(credential) = credential {
-            request = request.credential(credential.clone());
-        }
+            .bypass(true)
+            .credential_opt(credential.cloned());
         Ok(request)
     }
 
