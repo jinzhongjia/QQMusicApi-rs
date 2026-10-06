@@ -30,6 +30,14 @@ pub struct SingerBrief {
     /// Name.
     #[json(alias("singer_name", "singerName", "name"))]
     pub name: String,
+    /// Title.
+    #[json(alias("title", "singerName", "name"))]
+    pub title: String,
+    /// Type.
+    #[json(alias("type", "SingerType", "vt"))]
+    pub r#type: i64,
+    /// Uin.
+    pub uin: i64,
     /// Picture mid.
     #[json(alias("singer_pmid", "singerPmid", "pmid"))]
     pub pmid: String,
@@ -248,12 +256,18 @@ pub struct AlbumBrief {
     /// Name.
     #[json(alias("albumName", "name"))]
     pub name: String,
+    /// Title.
+    #[json(alias("title", "albumName", "name"))]
+    pub title: String,
     /// Subtitle.
     #[json(alias("albumTranName", "subtitle"))]
     pub subtitle: String,
     /// Publish date.
     #[json(alias("publishDate", "time_public"))]
     pub time_public: String,
+    /// Picture mid.
+    #[json(alias("pmid", "logo"))]
+    pub pmid: String,
     /// Song count.
     #[json(alias = "totalNum")]
     pub total_num: i64,
@@ -286,6 +300,9 @@ pub struct VideoBrief {
     /// Type.
     #[json(default = -1)]
     pub r#type: i64,
+    /// Name.
+    #[json(alias("name", "mvname", "title"))]
+    pub name: String,
     /// Title.
     pub title: String,
     /// Picture URL.
@@ -428,6 +445,11 @@ pub struct SingerBasicInfo {
     pub mid: String,
     /// Name.
     pub name: String,
+    /// Title.
+    #[json(alias("title", "singerName", "name"))]
+    pub title: String,
+    /// Uin.
+    pub uin: i64,
     /// Type.
     #[json(default = -1)]
     pub r#type: i64,
@@ -446,6 +468,8 @@ impl Default for SingerBasicInfo {
             id: -1,
             mid: String::new(),
             name: String::new(),
+            title: String::new(),
+            uin: 0,
             r#type: -1,
             pmid: String::new(),
             has_photo: 0,
@@ -550,6 +574,14 @@ pub struct SimilarSinger {
     /// Name.
     #[json(alias = "singerName")]
     pub name: String,
+    /// Title.
+    #[json(alias("title", "singerName", "name"))]
+    pub title: String,
+    /// Type.
+    #[json(alias("type", "SingerType", "vt"))]
+    pub r#type: i64,
+    /// Uin.
+    pub uin: i64,
     /// Picture mid.
     #[json(alias = "pic_mid")]
     pub pmid: String,
@@ -713,5 +745,21 @@ mod tests {
         assert_eq!(mvs.into_items()[0].id, 2);
         let tags: SingerMvTagResponse = from_value(&json!({"list": [{"id": 1, "name": "全部"}]})).unwrap();
         assert_eq!(tags.tags[0].name, "全部");
+    }
+
+    /// Expected values come from the upstream pydantic models.
+    #[test]
+    fn inherited_base_fields_match_upstream() {
+        let s: SingerBrief =
+            from_value(&json!({"singer_id": 1, "singer_name": "A", "SingerType": 2, "uin": 9})).unwrap();
+        assert_eq!((s.id, s.name.as_str(), s.title.as_str(), s.r#type, s.uin), (1, "A", "", 2, 9));
+        let a: AlbumBrief = from_value(&json!({"albumID": 3, "albumName": "B", "logo": "L"})).unwrap();
+        assert_eq!((a.id, a.name.as_str(), a.title.as_str(), a.pmid.as_str()), (3, "B", "B", "L"));
+        let v: VideoBrief = from_value(&json!({"mvid": 4, "mvname": "C", "title": "T"})).unwrap();
+        assert_eq!((v.id, v.name.as_str(), v.title.as_str()), (4, "C", "T"));
+        let b: SingerBasicInfo = from_value(&json!({"singer_id": 5, "name": "D", "uin": 7})).unwrap();
+        assert_eq!((b.id, b.name.as_str(), b.title.as_str(), b.r#type, b.uin), (5, "D", "D", -1, 7));
+        let m: SimilarSinger = from_value(&json!({"singerId": 6, "singerName": "E", "vt": 3})).unwrap();
+        assert_eq!((m.id, m.name.as_str(), m.title.as_str(), m.r#type, m.uin), (6, "E", "E", 3, 0));
     }
 }
