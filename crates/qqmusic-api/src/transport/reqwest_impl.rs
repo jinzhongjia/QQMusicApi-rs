@@ -1,4 +1,5 @@
-//! Default transport backed by `reqwest` + rustls.
+//! Default transport backed by `reqwest` + rustls (see [`crate::tls`] for the
+//! crypto provider selection).
 
 use std::net::{IpAddr, SocketAddr};
 use std::time::Duration;
@@ -87,12 +88,13 @@ fn build_client(config: &TransportConfig, follow: bool) -> Result<reqwest::Clien
             reqwest::redirect::Policy::none()
         })
         .no_proxy();
-    if config.http1_only {
+    let alpn = if config.http1_only {
         builder = builder.http1_only();
-    }
-    if config.accept_invalid_certs {
-        builder = builder.tls_danger_accept_invalid_certs(true);
-    }
+        crate::tls::ALPN_HTTP1
+    } else {
+        crate::tls::ALPN_H2_HTTP1
+    };
+    builder = builder.tls_backend_preconfigured(crate::tls::client_config(alpn, config.accept_invalid_certs)?);
     if let Some(proxy) = &config.proxy {
         let proxy =
             reqwest::Proxy::all(proxy).map_err(|e| Error::invalid_argument(format!("invalid proxy {proxy}: {e}")))?;
@@ -222,6 +224,11 @@ mod tests {
             local_address: Some("0.0.0.0".parse().unwrap()),
             ..TransportConfig::default()
         };
+        if crate::tls::crypto_provider().is_err() {
+            // Built without a crypto provider: construction must fail cleanly.
+            assert!(ReqwestTransport::new(&config).is_err());
+            return;
+        }
         assert!(ReqwestTransport::new(&config).is_ok());
     }
 
@@ -242,7 +249,10 @@ mod tests {
             connect_timeout: Duration::from_millis(500),
             ..TransportConfig::default()
         };
-        let transport = ReqwestTransport::new(&config).unwrap();
+        let Ok(transport) = ReqwestTransport::new(&config) else {
+            assert!(crate::tls::crypto_provider().is_err(), "only fails without a crypto provider");
+            return;
+        };
         // Port 9 (discard) on localhost is almost always closed.
         let err = transport.send(Request::new(Method::Get, "http://127.0.0.1:9/")).await.unwrap_err();
         assert!(err.connect || err.timeout, "{err:?}");

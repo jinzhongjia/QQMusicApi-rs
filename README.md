@@ -24,8 +24,23 @@ tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 | `reqwest-transport` | 是 | 基于 reqwest + rustls 的默认 HTTP 传输层 |
 | `mobile-login` | 是 | QQ 音乐 App 扫码登录（MQTT over WebSocket） |
 | `socks` | 否 | reqwest 传输层的 SOCKS 代理支持 |
+| `tls-graviola` | 是 | rustls 加密后端 [graviola](https://github.com/ctz/graviola)：纯 Rust + 形式化验证汇编，**无需 C 编译器** |
+| `tls-aws-lc` | 否 | rustls 加密后端 aws-lc-rs（需要 cmake 与 C 编译器） |
+| `tls-ring` | 否 | rustls 加密后端 ring（需要 C 编译器） |
+| `native-roots` | 否 | 在内置的 webpki-roots 之外额外信任系统证书库 |
 
 关闭 `reqwest-transport` 时需通过 `ClientBuilder::transport` 提供自定义的 `Transport` 实现。
+
+### 纯 Rust 构建
+
+默认特性下整个依赖树不编译任何 C 代码（不依赖 aws-lc-sys / ring / openssl / cmake），
+可以直接交叉编译到 `x86_64/aarch64-unknown-linux-musl` 等目标，CI 中会在 `CC=false` 下验证这一点。
+
+- 根证书来自内置的 `webpki-roots`，不读取系统证书库（可用 `native-roots` 开启）。
+- graviola 仅支持 x86_64（需 AES-NI、PCLMULQDQ、BMI1/2、ADX、AVX2，约 2014 年后的 CPU）与 aarch64；
+  运行时会检测 CPU，不满足时不会 panic，而是回退到应用通过
+  `rustls::crypto::CryptoProvider::install_default()` 安装的进程级 provider。
+- 同时启用多个后端时优先级为 aws-lc-rs > ring > graviola；需要支持更老的 CPU 或其他架构时可启用 `tls-ring` / `tls-aws-lc`。
 
 ## 快速开始
 

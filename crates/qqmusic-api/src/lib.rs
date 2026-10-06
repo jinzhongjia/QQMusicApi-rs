@@ -54,7 +54,11 @@
 //!
 //! * `reqwest-transport` (default) – `transport::ReqwestTransport`;
 //! * `mobile-login` (default) – QQ Music App QR login over MQTT/WebSocket;
-//! * `socks` – SOCKS proxy support for the reqwest transport.
+//! * `socks` – SOCKS proxy support for the reqwest transport;
+//! * `tls-graviola` (default) – pure-Rust rustls crypto provider (no C
+//!   toolchain); `tls-aws-lc` / `tls-ring` select C-based providers instead
+//!   (see `tls` module);
+//! * `native-roots` – also trust the OS certificate store.
 //!
 //! Without `reqwest-transport` a [`transport::Transport`] must be supplied.
 
@@ -76,6 +80,8 @@ pub mod ratelimit;
 pub mod request;
 pub mod response;
 pub mod session;
+#[cfg(feature = "_tls")]
+pub mod tls;
 pub mod transport;
 pub mod utils;
 pub mod versioning;
