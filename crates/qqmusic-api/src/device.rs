@@ -19,7 +19,7 @@ use serde_json::{Map, Value};
 use tokio::sync::Mutex;
 
 use crate::error::{Error, Result};
-use crate::utils::now_secs;
+use crate::utils::{lock_sync, now_secs};
 
 /// Android OS version information.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -464,32 +464,35 @@ impl DeviceCacheStore {
 #[derive(Debug)]
 pub struct DeviceStore {
     path: Option<PathBuf>,
-    device: Mutex<Option<Arc<Device>>>,
+    /// Hot path: read on every request without awaiting.
+    device: std::sync::Mutex<Option<Arc<Device>>>,
+    /// Serialises loading/generating so concurrent first calls agree.
+    init: Mutex<()>,
     cache: Arc<DeviceCacheStore>,
 }
 
 impl DeviceStore {
     /// In-memory random device (a new identity per process).
     pub fn ephemeral() -> Self {
-        Self { path: None, device: Mutex::new(None), cache: Arc::new(DeviceCacheStore::new(None)) }
+        Self::with(None, None, DeviceCacheStore::new(None))
     }
 
     /// Device persisted in a JSON file (created on first use).
     pub fn file(path: impl Into<PathBuf>) -> Self {
         let path = path.into();
         let cache = DeviceCacheStore::new(Some(DeviceCacheStore::path_for_device(&path)));
-        Self { path: Some(path), device: Mutex::new(None), cache: Arc::new(cache) }
+        Self::with(Some(path), None, cache)
     }
 
     /// Fixed device supplied by the caller (never written to disk).
     ///
     /// `cache_path` optionally persists QIMEI/session data.
     pub fn fixed(device: Device, cache_path: Option<PathBuf>) -> Self {
-        Self {
-            path: None,
-            device: Mutex::new(Some(Arc::new(device))),
-            cache: Arc::new(DeviceCacheStore::new(cache_path)),
-        }
+        Self::with(None, Some(Arc::new(device)), DeviceCacheStore::new(cache_path))
+    }
+
+    fn with(path: Option<PathBuf>, device: Option<Arc<Device>>, cache: DeviceCacheStore) -> Self {
+        Self { path, device: std::sync::Mutex::new(device), init: Mutex::new(()), cache: Arc::new(cache) }
     }
 
     /// Device file location.
@@ -504,9 +507,12 @@ impl DeviceStore {
 
     /// Get (and lazily load/generate) the device.
     pub async fn get(&self) -> Result<Arc<Device>> {
-        let mut guard = self.device.lock().await;
-        if let Some(device) = guard.as_ref() {
-            return Ok(Arc::clone(device));
+        if let Some(device) = self.current() {
+            return Ok(device);
+        }
+        let _init = self.init.lock().await;
+        if let Some(device) = self.current() {
+            return Ok(device);
         }
         let device = match &self.path {
             None => Device::random(),
@@ -518,8 +524,13 @@ impl DeviceStore {
             Some(path) => self.load(path).await?,
         };
         let device = Arc::new(device);
-        *guard = Some(Arc::clone(&device));
+        *lock_sync(&self.device) = Some(Arc::clone(&device));
         Ok(device)
+    }
+
+    /// Already loaded device, if any (never blocks on I/O).
+    pub fn current(&self) -> Option<Arc<Device>> {
+        lock_sync(&self.device).clone()
     }
 
     /// Replace the device (persisted if the store is file backed).
@@ -527,7 +538,8 @@ impl DeviceStore {
         if let Some(path) = &self.path {
             save_device(&device, path)?;
         }
-        *self.device.lock().await = Some(Arc::new(device));
+        let _init = self.init.lock().await;
+        *lock_sync(&self.device) = Some(Arc::new(device));
         Ok(())
     }
 
@@ -592,6 +604,25 @@ fn save_device(device: &Device, path: &Path) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn concurrent_first_get_yields_one_device() {
+        let store = Arc::new(DeviceStore::ephemeral());
+        assert!(store.current().is_none());
+        let tasks: Vec<_> = (0..32)
+            .map(|_| {
+                let store = Arc::clone(&store);
+                tokio::spawn(async move { store.get().await.unwrap() })
+            })
+            .collect();
+        let first = store.get().await.unwrap();
+        for task in tasks {
+            assert!(Arc::ptr_eq(&first, &task.await.unwrap()));
+        }
+        assert!(Arc::ptr_eq(&first, &store.current().unwrap()));
+        store.set(Device::random()).await.unwrap();
+        assert!(!Arc::ptr_eq(&first, &store.get().await.unwrap()));
+    }
 
     #[test]
     fn imei_is_luhn_valid() {

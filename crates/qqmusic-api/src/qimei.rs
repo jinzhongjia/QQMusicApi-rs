@@ -20,7 +20,7 @@ use crate::algorithms::rsa::RsaPublicKey;
 use crate::device::{Device, DeviceStore, Qimei};
 use crate::error::{Error, Result};
 use crate::transport::{Body, Method, Request, Transport};
-use crate::utils::{calc_md5, now_secs, utc_datetime};
+use crate::utils::{calc_md5, lock_sync, now_secs, utc_datetime};
 use crate::versioning::VersionProfile;
 
 /// QIMEI service endpoint.
@@ -220,13 +220,29 @@ pub struct QimeiProvider {
     devices: Arc<DeviceStore>,
     profile: VersionProfile,
     transport: Arc<dyn Transport>,
-    state: Mutex<State>,
+    /// Hot path: checked on every Android request without awaiting.
+    state: std::sync::Mutex<State>,
+    /// Single-flight guard for the disk / network lookup.
+    fetch: Mutex<()>,
 }
 
 #[derive(Default)]
 struct State {
     cached: Option<(Qimei, i64)>,
     last_failure: Option<Instant>,
+}
+
+impl State {
+    fn fresh(&self, now: i64) -> Option<Qimei> {
+        self.cached.as_ref().filter(|(_, saved_at)| now - saved_at < QIMEI_TTL_SECS).map(|(qimei, _)| qimei.clone())
+    }
+
+    /// `Some(cached)` while the failure backoff is active.
+    fn backoff(&self) -> Option<Option<Qimei>> {
+        self.last_failure
+            .filter(|failed| failed.elapsed() < QIMEI_FAILURE_BACKOFF)
+            .map(|_| self.cached.as_ref().map(|(qimei, _)| qimei.clone()))
+    }
 }
 
 impl std::fmt::Debug for QimeiProvider {
@@ -238,24 +254,58 @@ impl std::fmt::Debug for QimeiProvider {
 impl QimeiProvider {
     /// Create a provider.
     pub fn new(devices: Arc<DeviceStore>, profile: VersionProfile, transport: Arc<dyn Transport>) -> Self {
-        Self { devices, profile, transport, state: Mutex::new(State::default()) }
+        Self { devices, profile, transport, state: std::sync::Mutex::default(), fetch: Mutex::new(()) }
     }
 
     /// Get the cached QIMEI or request a new one.
     pub async fn get(&self) -> Result<Qimei> {
-        let now = now_secs();
-        let mut state = self.state.lock().await;
-        if let Some((qimei, saved_at)) = &state.cached
-            && now - saved_at < QIMEI_TTL_SECS
+        if let Some(qimei) = lock_sync(&self.state).fresh(now_secs()) {
+            return Ok(qimei);
+        }
+        let _fetch = self.fetch.lock().await;
+        self.fetch_locked().await
+    }
+
+    /// Like [`QimeiProvider::get`] but never fails: errors are logged and
+    /// further attempts are suppressed for [`QIMEI_FAILURE_BACKOFF`].
+    pub async fn get_lenient(&self) -> Option<Qimei> {
         {
-            return Ok(qimei.clone());
+            let state = lock_sync(&self.state);
+            if let Some(qimei) = state.fresh(now_secs()) {
+                return Some(qimei);
+            }
+            if let Some(cached) = state.backoff() {
+                return cached;
+            }
+        }
+        let _fetch = self.fetch.lock().await;
+        // A concurrent caller may have failed while we were waiting.
+        if let Some(cached) = lock_sync(&self.state).backoff() {
+            return cached;
+        }
+        match self.fetch_locked().await {
+            Ok(qimei) => Some(qimei),
+            Err(err) => {
+                tracing::warn!(error = %err, "failed to obtain QIMEI, continuing without it");
+                let mut state = lock_sync(&self.state);
+                state.last_failure = Some(Instant::now());
+                state.cached.as_ref().map(|(qimei, _)| qimei.clone())
+            }
+        }
+    }
+
+    /// Disk cache, then network. Caller holds `self.fetch`.
+    async fn fetch_locked(&self) -> Result<Qimei> {
+        let now = now_secs();
+        if let Some(qimei) = lock_sync(&self.state).fresh(now) {
+            return Ok(qimei);
         }
         if let Some((qimei, saved_at)) = self.devices.cache().qimei().await
             && now - saved_at < QIMEI_TTL_SECS
             && !qimei.q16.is_empty()
             && !qimei.q36.is_empty()
         {
-            state.cached = Some((qimei.clone(), saved_at));
+            lock_sync(&self.state).cached = Some((qimei.clone(), saved_at));
             return Ok(qimei);
         }
         let device = self.devices.get().await?;
@@ -269,31 +319,10 @@ impl QimeiProvider {
         }
         let qimei = parse_qimei_response(&response.body)?;
         self.devices.cache().set_qimei(&qimei, now).await;
+        let mut state = lock_sync(&self.state);
         state.cached = Some((qimei.clone(), now));
         state.last_failure = None;
         Ok(qimei)
-    }
-
-    /// Like [`QimeiProvider::get`] but never fails: errors are logged and
-    /// further attempts are suppressed for [`QIMEI_FAILURE_BACKOFF`].
-    pub async fn get_lenient(&self) -> Option<Qimei> {
-        {
-            let state = self.state.lock().await;
-            if let Some(failed) = state.last_failure
-                && failed.elapsed() < QIMEI_FAILURE_BACKOFF
-            {
-                return state.cached.as_ref().map(|(q, _)| q.clone());
-            }
-        }
-        match self.get().await {
-            Ok(qimei) => Some(qimei),
-            Err(err) => {
-                tracing::warn!(error = %err, "failed to obtain QIMEI, continuing without it");
-                let mut state = self.state.lock().await;
-                state.last_failure = Some(Instant::now());
-                state.cached.as_ref().map(|(q, _)| q.clone())
-            }
-        }
     }
 }
 
@@ -387,6 +416,37 @@ mod tests {
         assert_eq!(provider.get().await.unwrap().q36, "x36");
         assert_eq!(provider.get().await.unwrap().q16, "x16");
         assert_eq!(mock.request_count(), 1);
+    }
+
+    fn slow_provider(mock: &MockTransport) -> QimeiProvider {
+        let device = Device::generate(Some(DeviceProfile::Oppo), Some(1));
+        QimeiProvider::new(
+            Arc::new(DeviceStore::fixed(device, None)),
+            VersionProfile::android(),
+            Arc::new(crate::testing::SlowTransport(mock.clone())),
+        )
+    }
+
+    #[tokio::test]
+    async fn concurrent_get_is_single_flight() {
+        let mock = MockTransport::new();
+        mock.route_url("tencentmusic", |_| {
+            let inner = json!({"data": {"q16": "x16", "q36": "x36"}}).to_string();
+            Ok(Response::json(&json!({"data": inner})))
+        });
+        let provider = slow_provider(&mock);
+        let results = futures::future::join_all((0..16).map(|_| provider.get())).await;
+        assert!(results.iter().all(|r| r.as_ref().is_ok_and(|q| q.q36 == "x36")));
+        assert_eq!(mock.request_count(), 1);
+    }
+
+    #[tokio::test]
+    async fn concurrent_lenient_failures_share_backoff() {
+        let mock = MockTransport::with_handler(|_| Ok(Response::new(500, "")));
+        let provider = slow_provider(&mock);
+        let results = futures::future::join_all((0..16).map(|_| provider.get_lenient())).await;
+        assert!(results.iter().all(Option::is_none));
+        assert_eq!(mock.request_count(), 1, "waiters must honour the backoff set by the failed fetch");
     }
 
     #[tokio::test]

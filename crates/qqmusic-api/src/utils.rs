@@ -119,6 +119,14 @@ pub fn value_to_comm_string(value: &Value) -> Option<String> {
     }
 }
 
+/// Lock a `std` mutex, ignoring poisoning (the protected data are plain
+/// caches that stay consistent even if a holder panicked).
+///
+/// Used for hot-path caches: the guard must never be held across `.await`.
+pub(crate) fn lock_sync<T>(mutex: &std::sync::Mutex<T>) -> std::sync::MutexGuard<'_, T> {
+    mutex.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

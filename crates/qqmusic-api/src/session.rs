@@ -12,7 +12,7 @@ use crate::device::SessionRecord;
 use crate::error::{Error, Result};
 use crate::response::{parse_cgi_item, unwrap_cgi_envelope};
 use crate::transport::{Body, Method, Request};
-use crate::utils::{china_day, now_secs};
+use crate::utils::{china_day, lock_sync, now_secs};
 use crate::versioning::{CommContext, Platform};
 
 /// Whether a session was obtained today (China Standard Time).
@@ -41,7 +41,10 @@ pub fn parse_session(data: &Value, now: i64) -> Result<SessionRecord> {
 /// Daily Android session cache.
 #[derive(Debug, Default)]
 pub struct AndroidSessionManager {
-    state: Mutex<Option<SessionRecord>>,
+    /// Hot path: read on every Android request without awaiting.
+    state: std::sync::Mutex<Option<SessionRecord>>,
+    /// Single-flight guard for loading / refreshing.
+    refresh: Mutex<()>,
 }
 
 impl AndroidSessionManager {
@@ -50,22 +53,31 @@ impl AndroidSessionManager {
         Self::default()
     }
 
+    fn today(&self, now: i64) -> Option<SessionRecord> {
+        lock_sync(&self.state).as_ref().filter(|session| saved_today(session, now)).cloned()
+    }
+
     /// Return today's session, refreshing it when necessary.
     pub(crate) async fn ensure(&self, inner: &Inner) -> Result<SessionRecord> {
-        let mut state = self.state.lock().await;
+        if let Some(session) = self.today(now_secs()) {
+            return Ok(session);
+        }
+        let _refresh = self.refresh.lock().await;
         let now = now_secs();
-        if state.is_none() {
-            *state = inner.devices.cache().session().await.filter(|s| !s.uid.is_empty() && !s.sid.is_empty());
+        if let Some(session) = self.today(now) {
+            return Ok(session);
         }
-        if let Some(session) = state.as_ref()
-            && saved_today(session, now)
-        {
-            return Ok(session.clone());
+        let mut stale = lock_sync(&self.state).clone();
+        if stale.is_none() {
+            stale = inner.devices.cache().session().await.filter(|s| !s.uid.is_empty() && !s.sid.is_empty());
+            if let Some(session) = stale.as_ref().filter(|session| saved_today(session, now)) {
+                *lock_sync(&self.state) = Some(session.clone());
+                return Ok(session.clone());
+            }
         }
-        let stale = state.clone();
         let session = refresh(inner, stale.as_ref()).await?;
         inner.devices.cache().set_session(&session).await;
-        *state = Some(session.clone());
+        *lock_sync(&self.state) = Some(session.clone());
         Ok(session)
     }
 }

@@ -1002,6 +1002,37 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn concurrent_requests_share_one_session_fetch() {
+        let mock = MockTransport::new();
+        mock.route(
+            |req| req.json_body().is_some_and(|b| b["req_0"]["module"] == "music.getSession.session"),
+            |_| {
+                Ok(Response::json(&json!({
+                    "code": 0,
+                    "req_0": {"code": 0, "data": {"session": {"uid": "u1", "sid": "s1"}}}
+                })))
+            },
+        );
+        mock.route_url("musicu", echo_ok);
+        let client = Client::builder()
+            .transport(crate::testing::SlowTransport(mock.clone()))
+            .qimei(QimeiMode::Disabled)
+            .rate_limit(None)
+            .build()
+            .unwrap();
+        let calls = (0..8).map(|i| client.cgi::<Value>("m", format!("x{i}"), json!({})).send());
+        let results = futures::future::join_all(calls).await;
+        assert!(results.iter().all(Result::is_ok));
+        let session_fetches = mock
+            .requests()
+            .iter()
+            .filter(|r| r.json_body().is_some_and(|b| b["req_0"]["module"] == "music.getSession.session"))
+            .count();
+        assert_eq!(session_fetches, 1);
+        assert!(mock.requests().iter().skip(1).all(|r| r.json_body().unwrap()["comm"]["sid"] == "s1"));
+    }
+
+    #[tokio::test]
     async fn android_session_failure_is_not_fatal() {
         let mock = MockTransport::new();
         mock.route(

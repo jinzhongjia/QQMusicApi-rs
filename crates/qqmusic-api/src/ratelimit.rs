@@ -5,8 +5,11 @@
 
 use std::time::Duration;
 
-use tokio::sync::Mutex;
+use std::sync::Mutex;
+
 use tokio::time::Instant;
+
+use crate::utils::lock_sync;
 
 /// Rate limit settings.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -24,6 +27,10 @@ impl Default for RateLimit {
 }
 
 /// Async token bucket.
+///
+/// The bucket state sits behind a `std` mutex held only for the arithmetic,
+/// never across `.await`, so contended callers do not queue on async lock
+/// hand-offs.
 #[derive(Debug)]
 pub struct TokenBucket {
     limit: RateLimit,
@@ -44,7 +51,7 @@ impl TokenBucket {
     /// Wait for one token.
     pub async fn acquire(&self) {
         let wait = {
-            let mut state = self.state.lock().await;
+            let mut state = lock_sync(&self.state);
             let now = Instant::now();
             let elapsed = now.duration_since(state.1).as_secs_f64();
             state.0 = (state.0 + elapsed * self.limit.rate).min(self.limit.capacity);

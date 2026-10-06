@@ -65,3 +65,16 @@ pub(crate) fn last_req0(mock: &MockTransport) -> Value {
 pub(crate) fn last_body(mock: &MockTransport) -> Value {
     mock.last_request().and_then(|r| r.json_body()).expect("last request with JSON body")
 }
+
+/// Transport that yields for a while before delegating, so concurrent callers
+/// overlap with an in-flight request (used by single-flight tests).
+#[derive(Clone)]
+pub(crate) struct SlowTransport(pub MockTransport);
+
+#[async_trait::async_trait]
+impl crate::transport::Transport for SlowTransport {
+    async fn send(&self, request: Request) -> Result<Response, crate::error::TransportError> {
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+        self.0.send(request).await
+    }
+}
