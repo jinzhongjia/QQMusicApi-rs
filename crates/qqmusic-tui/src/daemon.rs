@@ -20,7 +20,8 @@ use crate::protocol::{Command, Event};
 /// macOS 上系统媒体控制需要主线程运行 NSApplication 事件循环，因此主线程运行
 /// NSApplication（Accessory 策略：不显示 Dock 图标，但可以作为「正在播放」应用；Prohibited 会被系统忽略），异步运行时放在后台线程，结束时直接退出进程。
 pub fn run(paths: Paths) -> io::Result<()> {
-    let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
+    // 守护进程负载很轻，两个工作线程足够，避免按 CPU 核数创建大量线程。
+    let runtime = tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build()?;
 
     #[cfg(all(target_os = "macos", feature = "media-controls"))]
     if let Some(mtm) = objc2::MainThreadMarker::new() {

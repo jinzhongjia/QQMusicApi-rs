@@ -3,9 +3,11 @@
 //! 引擎是一个 tokio 任务，通过 [`PlayerHandle`] 收发 [`Command`] / [`Event`]，
 //! 可以独立嵌入到其他程序中使用（守护进程只是在外面包了一层 IPC）。
 
+pub mod cdn;
 pub mod stream;
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use qqmusic_api::Client;
@@ -13,7 +15,7 @@ use qqmusic_api::modules::song::Quality;
 use rodio::{Decoder, Source};
 use tokio::sync::{broadcast, mpsc, watch};
 
-use self::stream::StreamHandle;
+use self::stream::{StreamHandle, StreamReader};
 use crate::config::Config;
 use crate::paths::Paths;
 use crate::protocol::{Command, Event, PlayMode, PlayerState, Status, Track};
@@ -63,18 +65,20 @@ impl PlayerHandle {
 ///
 /// `paths` 用于持久化配置与重新读取凭证。
 pub fn spawn(client: Client, paths: Paths) -> Result<PlayerHandle, String> {
-    let mixer = open_output()?;
     let config = Config::load(&paths);
     let (commands, command_rx) = mpsc::unbounded_channel();
     let (events, _) = broadcast::channel(64);
     let (state_tx, state) = watch::channel(PlayerState::default());
     let (queue_tx, queue) = watch::channel(Arc::new(Vec::new()));
     let (load_tx, load_rx) = mpsc::unbounded_channel();
+    let cdn = Arc::new(cdn::CdnSelector::new(&client));
     let engine = Engine {
         client,
         paths,
         config,
-        mixer,
+        output: Output::default(),
+        fade_token: Arc::default(),
+        idle_ticks: 0,
         queue: Vec::new(),
         index: None,
         history: Vec::new(),
@@ -86,6 +90,7 @@ pub fn spawn(client: Client, paths: Paths) -> Result<PlayerHandle, String> {
         duration_ms: 0,
         queue_version: 0,
         fail_streak: 0,
+        cdn,
         load_tx,
         events: events.clone(),
         state_tx,
@@ -95,35 +100,79 @@ pub fn spawn(client: Client, paths: Paths) -> Result<PlayerHandle, String> {
     Ok(PlayerHandle { commands, state, queue, events })
 }
 
-/// 在专用线程中打开默认音频输出（`cpal::Stream` 不能跨线程移动），返回混音器。
-fn open_output() -> Result<rodio::mixer::Mixer, String> {
+/// 音频回调缓冲帧数：音乐播放不需要低延迟，较大的缓冲能减少回调次数。
+const BUFFER_FRAMES: u32 = 4096;
+/// 空闲（停止 / 暂停）多少个 tick（250ms）后关闭音频设备。
+const IDLE_CLOSE_TICKS: u32 = 40;
+
+/// 音频输出设备：按需打开，空闲一段时间后关闭，避免停止 / 暂停时音频回调空转。
+#[derive(Default)]
+struct Output {
+    mixer: Option<rodio::mixer::Mixer>,
+    /// drop 时通知输出线程关闭设备。
+    close: Option<std::sync::mpsc::Sender<()>>,
+}
+
+impl Output {
+    fn mixer(&mut self) -> Result<rodio::mixer::Mixer, String> {
+        if let Some(mixer) = &self.mixer {
+            return Ok(mixer.clone());
+        }
+        let (mixer, close) = open_output()?;
+        self.mixer = Some(mixer.clone());
+        self.close = Some(close);
+        Ok(mixer)
+    }
+
+    fn close(&mut self) {
+        self.mixer = None;
+        self.close = None;
+    }
+}
+
+/// 在专用线程中打开默认音频输出（`cpal::Stream` 不能跨线程移动），返回混音器与关闭句柄。
+fn open_output() -> Result<(rodio::mixer::Mixer, std::sync::mpsc::Sender<()>), String> {
     let (tx, rx) = std::sync::mpsc::channel();
+    let (close_tx, close_rx) = std::sync::mpsc::channel::<()>();
     std::thread::Builder::new()
         .name("audio-output".into())
-        .spawn(move || match rodio::DeviceSinkBuilder::open_default_sink() {
-            Ok(mut sink) => {
-                sink.log_on_drop(false);
-                let _ = tx.send(Ok(sink.mixer().clone()));
-                loop {
-                    std::thread::park();
+        .spawn(move || {
+            let sink = rodio::DeviceSinkBuilder::from_default_device().and_then(|builder| {
+                builder.with_buffer_size(rodio::cpal::BufferSize::Fixed(BUFFER_FRAMES)).open_sink_or_fallback()
+            });
+            match sink {
+                Ok(mut sink) => {
+                    sink.log_on_drop(false);
+                    let _ = tx.send(Ok(sink.mixer().clone()));
+                    // 关闭句柄被 drop 后返回，随后 drop sink 关闭设备。
+                    let _ = close_rx.recv();
                 }
-            }
-            Err(e) => {
-                let _ = tx.send(Err(format!("无法打开音频输出设备: {e}")));
+                Err(e) => {
+                    let _ = tx.send(Err(format!("无法打开音频输出设备: {e}")));
+                }
             }
         })
         .map_err(|e| e.to_string())?;
-    rx.recv().map_err(|e| e.to_string())?
+    let mixer = rx.recv().map_err(|e| e.to_string())??;
+    Ok((mixer, close_tx))
 }
 
 struct Current {
-    sink: Arc<rodio::Player>,
-    _stream: StreamHandle,
+    /// 正在输出的音源；暂停时为 `None`，释放整条解码管线，恢复时从内存缓冲重建。
+    sink: Option<Arc<rodio::Player>>,
+    stream: StreamHandle,
+    hint: String,
+    /// 暂停时的播放位置。
+    paused_at: Duration,
+    /// 下载跟不上播放时主动暂停，攒够数据再继续，避免解码器阻塞系统音频线程。
+    buffering: bool,
 }
 
 struct Prepared {
     sink: rodio::Player,
-    stream: StreamHandle,
+    /// 新曲目的下载句柄；暂停后重建音源时为 `None`。
+    stream: Option<StreamHandle>,
+    hint: String,
     duration: Option<Duration>,
     quality: Quality,
 }
@@ -137,7 +186,11 @@ struct Engine {
     client: Client,
     paths: Paths,
     config: Config,
-    mixer: rodio::mixer::Mixer,
+    output: Output,
+    /// 渐入任务的取消令牌：每次开始新的渐入或手动调音量时递增，旧任务随即停止。
+    fade_token: Arc<AtomicU64>,
+    /// 连续空闲的 tick 数，用于关闭音频设备。
+    idle_ticks: u32,
     queue: Vec<Track>,
     index: Option<usize>,
     /// 随机模式下的播放历史，用于「上一首」。
@@ -151,6 +204,7 @@ struct Engine {
     queue_version: u64,
     /// 连续加载失败次数，避免整张歌单都不可播时无限跳歌。
     fail_streak: usize,
+    cdn: Arc<cdn::CdnSelector>,
     load_tx: mpsc::UnboundedSender<Loaded>,
     events: broadcast::Sender<Event>,
     state_tx: watch::Sender<PlayerState>,
@@ -171,11 +225,7 @@ impl Engine {
                 Some(loaded) = loads.recv() => self.on_loaded(loaded),
                 _ = tick.tick() => {
                     ticks += 1;
-                    if self.status == Status::Playing && self.current.as_ref().is_some_and(|c| c.sink.empty()) {
-                        self.on_track_end();
-                    } else if self.status == Status::Playing && ticks.is_multiple_of(2) {
-                        self.publish();
-                    }
+                    self.on_tick(ticks);
                 }
             }
         }
@@ -227,7 +277,7 @@ impl Engine {
                 self.set_queue(Vec::new());
             }
             Command::Toggle => match self.status {
-                Status::Playing => self.pause(),
+                Status::Playing | Status::Loading => self.pause(),
                 Status::Paused => self.resume(),
                 Status::Stopped if !self.queue.is_empty() => self.play_index(self.index.unwrap_or(0)),
                 _ => {}
@@ -248,8 +298,9 @@ impl Engine {
             }
             Command::SetVolume { volume } => {
                 self.config.volume = volume.min(100);
-                if let Some(current) = &self.current {
-                    current.sink.set_volume(self.volume_factor());
+                self.fade_token.fetch_add(1, Ordering::Relaxed);
+                if let Some(sink) = self.current.as_ref().and_then(|c| c.sink.as_ref()) {
+                    sink.set_volume(self.volume_factor());
                 }
                 self.save_config();
                 self.publish();
@@ -321,18 +372,118 @@ impl Engine {
         }
     }
 
+    fn fade_duration(&self) -> Duration {
+        Duration::from_millis(self.config.fade_ms)
+    }
+
+    /// 从静音渐入到当前音量并开始播放。
+    fn fade_in(&self, sink: &Arc<rodio::Player>) {
+        let target = self.volume_factor();
+        let duration = self.fade_duration();
+        let id = self.fade_token.fetch_add(1, Ordering::Relaxed) + 1;
+        if duration.is_zero() {
+            sink.set_volume(target);
+            sink.play();
+            return;
+        }
+        sink.set_volume(0.0);
+        sink.play();
+        let token = self.fade_token.clone();
+        tokio::spawn(ramp(sink.clone(), 0.0, target, duration, move || token.load(Ordering::Relaxed) == id));
+    }
+
+    /// 渐出后释放音源（期间继续读取内存中已下载的数据）。
+    fn fade_out(&self, sink: Arc<rodio::Player>) {
+        let duration = self.fade_duration();
+        if duration.is_zero() || sink.is_paused() {
+            return;
+        }
+        let from = sink.volume();
+        tokio::spawn(async move {
+            ramp(sink.clone(), from, 0.0, duration, || true).await;
+            sink.stop();
+        });
+    }
+
+    /// 丢弃当前曲目，正在输出的音源渐出。
+    fn release_current(&mut self) {
+        if let Some(sink) = self.current.take().and_then(|c| c.sink) {
+            self.fade_out(sink);
+        }
+    }
+
     fn volume_factor(&self) -> f32 {
         let v = f32::from(self.config.volume) / 100.0;
         v * v
     }
 
     fn position(&self) -> Duration {
-        self.current.as_ref().map_or(Duration::ZERO, |c| c.sink.get_pos())
+        match &self.current {
+            Some(Current { sink: Some(sink), .. }) => sink.get_pos(),
+            Some(current) => current.paused_at,
+            None => Duration::ZERO,
+        }
+    }
+
+    fn on_tick(&mut self, ticks: u64) {
+        enum Action {
+            None,
+            End,
+            StartBuffering,
+            StopBuffering,
+        }
+        let action = match &self.current {
+            Some(Current { sink: Some(sink), stream, buffering, .. }) => {
+                let (ahead, done) = stream.ahead();
+                // 按平均码率换算出 2 秒 / 6 秒的数据量作为缓冲阈值。
+                let rate = match (stream.content_length(), self.duration_ms) {
+                    (Some(len), ms) if ms > 0 => len * 1000 / ms,
+                    _ => 128 * 1024,
+                };
+                let (low, high) = ((rate * 2).max(64 * 1024), (rate * 6).max(256 * 1024));
+                match self.status {
+                    Status::Playing if sink.empty() => Action::End,
+                    Status::Playing if !done && ahead < low => Action::StartBuffering,
+                    Status::Loading if *buffering && (done || ahead >= high) => Action::StopBuffering,
+                    _ => Action::None,
+                }
+            }
+            _ => Action::None,
+        };
+        match action {
+            Action::End => return self.on_track_end(),
+            Action::StartBuffering | Action::StopBuffering => {
+                let start = matches!(action, Action::StartBuffering);
+                if let Some(current) = &mut self.current
+                    && let Some(sink) = &current.sink
+                {
+                    if start {
+                        sink.pause()
+                    } else {
+                        sink.play()
+                    }
+                    current.buffering = start;
+                    self.status = if start { Status::Loading } else { Status::Playing };
+                    self.publish();
+                }
+                return;
+            }
+            Action::None => {}
+        }
+        if self.status == Status::Playing && ticks.is_multiple_of(2) {
+            self.publish();
+        }
+        let idle = matches!(self.status, Status::Stopped | Status::Paused)
+            && self.current.as_ref().is_none_or(|c| c.sink.is_none());
+        self.idle_ticks = if idle { self.idle_ticks + 1 } else { 0 };
+        if self.idle_ticks == IDLE_CLOSE_TICKS {
+            self.output.close();
+        }
     }
 
     fn play_index(&mut self, index: usize) {
         let Some(track) = self.queue.get(index).cloned() else { return };
-        self.current = None;
+        self.release_current();
         self.generation += 1;
         self.index = Some(index);
         self.status = Status::Loading;
@@ -341,13 +492,20 @@ impl Engine {
         self.duration_ms = track.duration * 1000;
         self.publish();
 
+        let mixer = match self.output.mixer() {
+            Ok(mixer) => mixer,
+            Err(message) => {
+                let _ = self.events.send(Event::Error { message });
+                return self.stop();
+            }
+        };
         let generation = self.generation;
         let client = self.client.clone();
-        let mixer = self.mixer.clone();
         let quality = self.config.quality;
         let tx = self.load_tx.clone();
+        let cdn = self.cdn.clone();
         tokio::spawn(async move {
-            let result = load(client, mixer, track, quality).await;
+            let result = load(client, mixer, &cdn, track, quality).await;
             let _ = tx.send(Loaded { generation, result });
         });
     }
@@ -359,20 +517,31 @@ impl Engine {
         match loaded.result {
             Ok(prepared) => {
                 self.fail_streak = 0;
-                let sink = Arc::new(prepared.sink);
-                sink.set_volume(self.volume_factor());
                 if let Some(duration) = prepared.duration {
                     self.duration_ms = duration.as_millis() as u64;
                 }
                 self.playing_quality = Some(prepared.quality);
-                if let Some(position) = self.resume_at.take() {
+                // 新曲目：建立 Current，需要时跳到 resume_at；重建的音源已在加载时跳转过。
+                let mut seek_to = None;
+                if let Some(stream) = prepared.stream {
+                    let paused_at = self.resume_at.take().unwrap_or_default();
+                    seek_to = (!paused_at.is_zero()).then_some(paused_at);
+                    self.current =
+                        Some(Current { sink: None, stream, hint: prepared.hint, paused_at, buffering: false });
+                }
+                // 加载期间被暂停：不保留音源，恢复时再重建。
+                if self.status == Status::Paused {
+                    return self.publish();
+                }
+                let sink = Arc::new(prepared.sink);
+                if let Some(position) = seek_to {
                     seek_blocking(sink.clone(), position);
                 }
-                if self.status == Status::Loading {
-                    sink.play();
-                    self.status = Status::Playing;
-                }
-                self.current = Some(Current { sink, _stream: prepared.stream });
+                self.fade_in(&sink);
+                let Some(current) = &mut self.current else { return };
+                current.sink = Some(sink);
+                current.buffering = false;
+                self.status = Status::Playing;
                 self.publish();
             }
             Err(message) => {
@@ -453,13 +622,21 @@ impl Engine {
     }
 
     fn pause(&mut self) {
-        if self.status == Status::Playing
-            && let Some(current) = &self.current
-        {
-            current.sink.pause();
-            self.status = Status::Paused;
-            self.publish();
+        if !matches!(self.status, Status::Playing | Status::Loading) {
+            return;
         }
+        // 丢弃音源（停止解码与混音），只保留内存中的下载数据与位置。
+        let released = self.current.as_mut().and_then(|current| {
+            current.buffering = false;
+            let sink = current.sink.take()?;
+            current.paused_at = sink.get_pos();
+            Some(sink)
+        });
+        if let Some(sink) = released {
+            self.fade_out(sink);
+        }
+        self.status = Status::Paused;
+        self.publish();
     }
 
     fn resume(&mut self) {
@@ -467,12 +644,18 @@ impl Engine {
             return;
         }
         match &self.current {
-            Some(current) => {
-                current.sink.play();
+            Some(Current { sink: Some(sink), .. }) => {
+                let sink = sink.clone();
+                self.fade_in(&sink);
                 self.status = Status::Playing;
                 self.publish();
             }
-            // 暂停状态下切换了音质，加载完成前恢复播放。
+            Some(_) => {
+                self.status = Status::Loading;
+                self.publish();
+                self.rebuild();
+            }
+            // 加载尚未完成，完成后自动播放。
             None => {
                 self.status = Status::Loading;
                 self.publish();
@@ -480,8 +663,40 @@ impl Engine {
         }
     }
 
+    /// 暂停后恢复：从内存缓冲重建解码器并跳回暂停位置。
+    fn rebuild(&mut self) {
+        let mixer = match self.output.mixer() {
+            Ok(mixer) => mixer,
+            Err(message) => {
+                let _ = self.events.send(Event::Error { message });
+                return self.stop();
+            }
+        };
+        let Some(current) = &self.current else { return };
+        let reader = current.stream.reader();
+        let len = current.stream.content_length();
+        let hint = current.hint.clone();
+        let position = current.paused_at;
+        let quality = self.playing_quality.unwrap_or(self.config.quality);
+        let generation = self.generation;
+        let tx = self.load_tx.clone();
+        tokio::spawn(async move {
+            let result = tokio::task::spawn_blocking(move || {
+                let (sink, duration) = build_sink(&mixer, reader, len, &hint)?;
+                if !position.is_zero() {
+                    sink.try_seek(position).map_err(|e| format!("恢复播放位置失败: {e}"))?;
+                }
+                Ok(Prepared { sink, stream: None, hint, duration, quality })
+            })
+            .await
+            .map_err(|e| e.to_string())
+            .and_then(|r| r);
+            let _ = tx.send(Loaded { generation, result });
+        });
+    }
+
     fn stop(&mut self) {
-        self.current = None;
+        self.release_current();
         self.generation += 1;
         self.status = Status::Stopped;
         self.playing_quality = None;
@@ -494,10 +709,14 @@ impl Engine {
         } else {
             position
         };
-        if let Some(current) = &self.current {
-            seek_blocking(current.sink.clone(), position);
-        } else if self.status == Status::Loading {
-            self.resume_at = Some(position);
+        match &mut self.current {
+            Some(Current { sink: Some(sink), .. }) => seek_blocking(sink.clone(), position),
+            Some(current) => {
+                current.paused_at = position;
+                self.publish();
+            }
+            None if self.status == Status::Loading => self.resume_at = Some(position),
+            None => {}
         }
     }
 
@@ -526,6 +745,19 @@ impl Engine {
     }
 }
 
+/// 在 `duration` 内把音量从 `from` 线性调到 `to`；`active` 返回 false 时提前停止。
+async fn ramp(sink: Arc<rodio::Player>, from: f32, to: f32, duration: Duration, active: impl Fn() -> bool) {
+    const STEP: Duration = Duration::from_millis(15);
+    let steps = (duration.as_millis() / STEP.as_millis()).max(1) as u32;
+    for i in 1..=steps {
+        tokio::time::sleep(duration / steps).await;
+        if !active() {
+            return;
+        }
+        sink.set_volume(from + (to - from) * i as f32 / steps as f32);
+    }
+}
+
 /// `try_seek` 会等待音频线程执行，放到阻塞线程池里做。
 fn seek_blocking(sink: Arc<rodio::Player>, position: Duration) {
     tokio::task::spawn_blocking(move || {
@@ -535,28 +767,84 @@ fn seek_blocking(sink: Arc<rodio::Player>, position: Duration) {
     });
 }
 
-async fn load(client: Client, mixer: rodio::mixer::Mixer, track: Track, quality: Quality) -> Result<Prepared, String> {
+async fn load(
+    client: Client,
+    mixer: rodio::mixer::Mixer,
+    cdn: &cdn::CdnSelector,
+    track: Track,
+    quality: Quality,
+) -> Result<Prepared, String> {
     let url = client
         .song()
         .playable_url(&track.mid, Some(&track.media_mid), quality)
         .await
         .map_err(|e| format!("获取播放链接失败: {e}"))?
         .ok_or_else(|| "没有可用的播放链接（可能需要会员或无版权）".to_string())?;
-    let (stream, reader, len) = stream::open(client.transport().clone(), &url.url).await?;
+    let full_url = cdn.resolve(&client, &url.url).await;
+    let (stream, reader, len) = stream::open(cdn.transport(), &full_url).await?;
     let hint = url.file_type.extension.trim_start_matches('.').to_string();
-    let (sink, duration) = tokio::task::spawn_blocking(move || {
-        let mut builder = Decoder::builder().with_data(reader).with_seekable(true).with_hint(&hint);
-        if let Some(len) = len {
-            builder = builder.with_byte_len(len);
-        }
-        let decoder = builder.build().map_err(|e| format!("解码失败: {e}"))?;
-        let duration = decoder.total_duration();
-        let sink = rodio::Player::connect_new(&mixer);
-        sink.pause();
-        sink.append(decoder);
-        Ok::<_, String>((sink, duration))
-    })
-    .await
-    .map_err(|e| e.to_string())??;
-    Ok(Prepared { sink, stream, duration, quality: url.quality })
+    let build_hint = hint.clone();
+    let (sink, duration) = tokio::task::spawn_blocking(move || build_sink(&mixer, reader, len, &build_hint))
+        .await
+        .map_err(|e| e.to_string())??;
+    Ok(Prepared { sink, stream: Some(stream), hint, duration, quality: url.quality })
+}
+
+/// 创建解码器并接入混音器（保持暂停，由调用方决定何时播放）。
+fn build_sink(
+    mixer: &rodio::mixer::Mixer,
+    reader: StreamReader,
+    len: Option<u64>,
+    hint: &str,
+) -> Result<(rodio::Player, Option<Duration>), String> {
+    let mut builder = Decoder::builder().with_data(reader).with_seekable(true).with_hint(hint);
+    if let Some(len) = len {
+        builder = builder.with_byte_len(len);
+    }
+    let decoder = builder.build().map_err(|e| format!("解码失败: {e}"))?;
+    let duration = decoder.total_duration();
+    let sink = rodio::Player::connect_new(mixer);
+    sink.pause();
+    sink.append(decoder);
+    Ok((sink, duration))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::time::Duration;
+
+    use super::ramp;
+
+    #[tokio::test]
+    async fn ramp_reaches_target_and_stops_when_cancelled() {
+        let (sink, _output) = rodio::Player::new();
+        let sink = Arc::new(sink);
+
+        sink.set_volume(0.0);
+        let mid = {
+            let sink = sink.clone();
+            tokio::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(60)).await;
+                sink.volume()
+            })
+        };
+        ramp(sink.clone(), 0.0, 0.8, Duration::from_millis(120), || true).await;
+        let mid = mid.await.unwrap();
+        assert!(mid > 0.0 && mid < 0.8, "渐变过程中音量应介于两端: {mid}");
+        assert!((sink.volume() - 0.8).abs() < 1e-6);
+
+        // 取消后不再修改音量。
+        let active = Arc::new(AtomicBool::new(true));
+        let flag = active.clone();
+        let task = tokio::spawn(ramp(sink.clone(), 0.8, 0.0, Duration::from_millis(300), move || {
+            flag.load(Ordering::Relaxed)
+        }));
+        tokio::time::sleep(Duration::from_millis(60)).await;
+        active.store(false, Ordering::Relaxed);
+        task.await.unwrap();
+        let frozen = sink.volume();
+        assert!(frozen > 0.0 && frozen < 0.8, "{frozen}");
+    }
 }
