@@ -425,6 +425,25 @@ struct GroupKey {
     bypass: bool,
 }
 
+/// Login cookies (`uin` / `qm_keyst` and their aliases) of a credential.
+fn credential_cookies(credential: &Credential) -> IndexMap<String, String> {
+    let mut cookies = IndexMap::new();
+    if credential.musicid != 0 {
+        let uin = credential.uin();
+        cookies.insert("uin".into(), uin.clone());
+        cookies.insert("qqmusic_uin".into(), uin);
+    }
+    if !credential.musickey.is_empty() {
+        cookies.insert("qm_keyst".into(), credential.musickey.clone());
+        cookies.insert("qqmusic_key".into(), credential.musickey.clone());
+    }
+    cookies
+}
+
+fn join_cookies(cookies: &IndexMap<String, String>) -> String {
+    cookies.iter().map(|(k, v)| format!("{k}={v}")).collect::<Vec<_>>().join("; ")
+}
+
 fn canonical_comm(comm: &IndexMap<String, Option<String>>) -> Option<String> {
     if comm.is_empty() {
         return None;
@@ -752,22 +771,22 @@ impl Client {
             policy.user_agent(key.platform, &device)
         };
         request.set_header("User-Agent", user_agent);
+        // Desktop and web clients authenticate through cookies; their `comm`
+        // only carries `uin` / `g_tk`, without which every login-only
+        // module answers 1000.
+        if !use_bypass && matches!(key.platform, Platform::Desktop | Platform::Web) {
+            let cookies = credential_cookies(&key.credential);
+            if !cookies.is_empty() {
+                request.set_header("Cookie", join_cookies(&cookies));
+            }
+        }
         request.body = Body::Json(body);
         Ok(request)
     }
 
     async fn prepare_http(&self, spec: HttpSpec) -> Result<Request> {
         let credential = spec.credential.clone().unwrap_or_else(|| self.credential());
-        let mut cookies: IndexMap<String, String> = IndexMap::new();
-        if credential.musicid != 0 {
-            let uin = credential.uin();
-            cookies.insert("uin".into(), uin.clone());
-            cookies.insert("qqmusic_uin".into(), uin);
-        }
-        if !credential.musickey.is_empty() {
-            cookies.insert("qm_keyst".into(), credential.musickey.clone());
-            cookies.insert("qqmusic_key".into(), credential.musickey.clone());
-        }
+        let mut cookies = credential_cookies(&credential);
         cookies.extend(spec.cookies);
 
         let mut request = Request::new(spec.method, spec.url);
@@ -777,7 +796,7 @@ impl Client {
         request.timeout = spec.timeout;
         request.follow_redirects = spec.follow_redirects;
         if !cookies.is_empty() {
-            let mut value = cookies.iter().map(|(k, v)| format!("{k}={v}")).collect::<Vec<_>>().join("; ");
+            let mut value = join_cookies(&cookies);
             if let Some(existing) = request.header("cookie") {
                 value = format!("{existing}; {value}");
             }
@@ -990,9 +1009,17 @@ mod tests {
         let client = client(&mock);
         client.set_credential(Credential::new(7, "W_X_key"));
         let _: Value = client.cgi("m", "x", json!({})).send().await.unwrap();
-        let body = mock.last_request().unwrap().json_body().unwrap();
+        let request = mock.last_request().unwrap();
+        let body = request.json_body().unwrap();
         assert_eq!(body["comm"]["qq"], "7");
         assert_eq!(body["comm"]["tmeLoginType"], "1");
+        // Android authenticates through `comm`; desktop and web need cookies.
+        assert!(request.header("cookie").is_none());
+        for platform in [Platform::Desktop, Platform::Web] {
+            let _: Value = client.cgi("m", "x", json!({})).platform(platform).send().await.unwrap();
+            let cookies = mock.last_request().unwrap().cookies();
+            assert_eq!((cookies["uin"].as_str(), cookies["qm_keyst"].as_str()), ("7", "W_X_key"), "{platform:?}");
+        }
 
         let value: Value =
             client.http(HttpSpec::new(Method::Get, "https://example.com/a").cookie("extra", "1")).send().await.unwrap();
