@@ -18,7 +18,7 @@ use crate::protocol::{Command, Event};
 /// 阻塞运行守护进程，直到收到 [`Command::Shutdown`] 或终止信号。
 ///
 /// macOS 上系统媒体控制需要主线程运行 NSApplication 事件循环，因此主线程运行
-/// NSApplication（不显示 Dock 图标），异步运行时放在后台线程，结束时直接退出进程。
+/// NSApplication（Accessory 策略：不显示 Dock 图标，但可以作为「正在播放」应用；Prohibited 会被系统忽略），异步运行时放在后台线程，结束时直接退出进程。
 pub fn run(paths: Paths) -> io::Result<()> {
     let runtime = tokio::runtime::Builder::new_multi_thread().enable_all().build()?;
 
@@ -35,7 +35,7 @@ pub fn run(paths: Paths) -> io::Result<()> {
             std::process::exit(code);
         })?;
         let app = objc2_app_kit::NSApplication::sharedApplication(mtm);
-        app.setActivationPolicy(objc2_app_kit::NSApplicationActivationPolicy::Prohibited);
+        app.setActivationPolicy(objc2_app_kit::NSApplicationActivationPolicy::Accessory);
         app.run();
         std::process::exit(0);
     }
