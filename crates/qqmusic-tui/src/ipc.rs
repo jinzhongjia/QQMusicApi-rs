@@ -103,12 +103,12 @@ impl IpcClient {
 
 /// 以分离进程方式启动守护进程：`program args...`，标准错误写入数据目录下的日志。
 ///
-/// 子进程通过 `QQMUSIC_TUI_HOME` 使用同一数据目录，并脱离当前终端的进程组（Unix）/
+/// 子进程通过 `QQM_HOME` 使用同一数据目录，并脱离当前终端的进程组（Unix）/
 /// 控制台（Windows），TUI 退出后继续运行。
 pub fn spawn_detached(paths: &Paths, program: &Path, args: &[&str]) -> io::Result<()> {
     let log = std::fs::OpenOptions::new().create(true).append(true).open(paths.daemon_log())?;
     let mut command = std::process::Command::new(program);
-    command.args(args).env("QQMUSIC_TUI_HOME", paths.root()).stdin(Stdio::null()).stdout(Stdio::null()).stderr(log);
+    command.args(args).env("QQM_HOME", paths.root()).stdin(Stdio::null()).stdout(Stdio::null()).stderr(log);
     #[cfg(unix)]
     {
         use std::os::unix::process::CommandExt;

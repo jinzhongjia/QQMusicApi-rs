@@ -16,7 +16,7 @@ qqm ctl toggle   # 控制后台播放：toggle | play | pause | next | prev | st
 qqm daemon       # 前台运行播放进程（调试用）
 ```
 
-数据（凭证、设备信息、配置、日志）默认存放在系统数据目录下的 `qqmusic-tui`，可用环境变量 `QQMUSIC_TUI_HOME` 指定。其中 `config.json` 保存音质、音量、播放模式，以及切歌 / 暂停时的渐入渐出时长 `fade_ms`（默认 400，设为 0 关闭）。Linux 需要 ALSA 开发库（`libasound2-dev` / `alsa-lib-devel`）。
+数据（凭证、设备信息、配置、日志）默认存放在系统数据目录下的 `qqm`（Linux 为 `~/.local/share/qqm`），可用环境变量 `QQM_HOME` 指定。其中 `config.json` 保存音质、音量、播放模式，以及切歌 / 暂停时的渐入渐出时长 `fade_ms`（默认 400，设为 0 关闭）。Linux 需要 ALSA 开发库（`libasound2-dev` / `alsa-lib-devel`）。
 
 按 `?` 查看全部快捷键。按键沿用 go-musicfox：`hjkl` 移动（双列时 `h` `l` 左右切换、到边缘翻页），`n`/`Enter` 进入，`b`/`Esc` 返回，`Space` 播放/暂停，`[` `]` 切歌，`,` `.` 快退/快进，`-` `=` 音量，`m` 播放模式，`v` 音质，`/` 搜索，`f` 喜欢，`q` 退出界面（音乐继续），`Q` 退出并停止播放。
 

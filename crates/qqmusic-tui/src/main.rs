@@ -17,7 +17,7 @@ const USAGE: &str = "\
                    toggle | play | pause | next | prev | stop | status | quit
 
 环境变量:
-  QQMUSIC_TUI_HOME 数据目录（默认为系统数据目录下的 qqmusic-tui）";
+  QQM_HOME         数据目录（默认为系统数据目录下的 qqm）";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
