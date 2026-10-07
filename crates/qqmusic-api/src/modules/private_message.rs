@@ -305,18 +305,21 @@ impl PrivateMessageApi {
     }
 
     /// Set a private message setting.
+    ///
+    /// Some settings are integers (`config_value`, e.g. types 1 and 2) and
+    /// some strings (`config_value_str`, e.g. type 5); a numeric value is
+    /// sent in both fields so either kind is updated.
     pub fn set_config(
         &self,
         config_type: i64,
         config_value: &str,
         credential: Option<Credential>,
     ) -> CgiRequest<PrivateOperationResponse> {
-        self.private(
-            WRITE_MODULE,
-            "SetConfig",
-            json!({"config_type": config_type, "config_value_str": config_value}),
-            credential,
-        )
+        let mut param = json!({"config_type": config_type, "config_value_str": config_value});
+        if let Ok(number) = config_value.trim().parse::<i64>() {
+            param["config_value"] = json!(number);
+        }
+        self.private(WRITE_MODULE, "SetConfig", param, credential)
     }
 
     /// Read a private message setting.
@@ -394,10 +397,15 @@ impl PrivateMessageApi {
         msg_ids: Vec<String>,
         credential: Option<Credential>,
     ) -> CgiRequest<PrivateMediaMessageDetailsResponse> {
+        // Unsigned requests are rejected with 2000.
         self.private(READ_MODULE, "GetMsgDetails", json!({"SessionID": session_id, "MsgIDs": msg_ids}), credential)
+            .sign(true)
     }
 
     /// Mark every message as read.
+    ///
+    /// With `cmd_flag` 1 this clears the unread counters of **all** sessions;
+    /// `encrypt_uin` does not narrow it to one peer.
     pub fn mark_all_messages_read(
         &self,
         cmd_flag: i64,
@@ -424,12 +432,14 @@ impl PrivateMessageApi {
 
     /// Friendship floating badge (raw data).
     pub fn get_friendship_badge(&self, target_enc_uin: &str, credential: Option<Credential>) -> CgiRequest<Value> {
+        // Unsigned requests are rejected with 500031.
         self.private(
             "music.dazi.DzEntrySrv",
             "GetFriendFloatingIcon",
             json!({"TargetEncuin": target_enc_uin}),
             credential,
         )
+        .sign(true)
     }
 }
 
@@ -524,6 +534,7 @@ mod tests {
     async fn write_and_misc_requests() {
         let (client, mock) = logged_in_client();
         mock.route_url("musicu", reply_all(json!({})));
+        mock.route_url("musics", reply_all(json!({})));
         let api = client.private_message();
         let mut ext = Map::new();
         ext.insert("k".into(), json!("v"));
@@ -531,7 +542,7 @@ mod tests {
             ("DeleteSession", WRITE_MODULE, json!({"session_id": "s", "super_msg_flag": 0})),
             ("DeleteMessage", WRITE_MODULE, json!({"session_id": "s", "msg_id": "m", "super_msg_flag": 1})),
             ("ClearSession", WRITE_MODULE, json!({"session_id": "s", "super_msg_flag": 0})),
-            ("SetConfig", WRITE_MODULE, json!({"config_type": 2, "config_value_str": "1"})),
+            ("SetConfig", WRITE_MODULE, json!({"config_type": 2, "config_value_str": "1", "config_value": 1})),
             ("GetConfig", READ_MODULE, json!({"config_type": 2, "config_value_str": ""})),
             ("GetMusicianCard", "music.privateMsg.MusicianMsgCardSvr", json!({"EncUin": "e"})),
             (
@@ -561,11 +572,15 @@ mod tests {
         api.get_chat_entries(vec![1, 2], None, Some("u"), None, None).await.unwrap();
         seen.push(last_req0(&mock));
         api.get_media_message_details("s", vec!["a".into()], None).await.unwrap();
+        assert!(mock.last_request().unwrap().query_param("sign").is_some());
         seen.push(last_req0(&mock));
         api.mark_all_messages_read(1, "e", None).await.unwrap();
         seen.push(last_req0(&mock));
         api.get_friendship_badge("t", None).await.unwrap();
+        assert!(mock.last_request().unwrap().query_param("sign").is_some());
         seen.push(last_req0(&mock));
+        api.set_config(5, "abc", None).await.unwrap();
+        assert_eq!(last_req0(&mock)["param"], json!({"config_type": 5, "config_value_str": "abc"}));
         for ((method, module, param), req) in cases.into_iter().zip(seen) {
             assert_eq!(req["method"], method);
             assert_eq!(req["module"], module, "{method}");
