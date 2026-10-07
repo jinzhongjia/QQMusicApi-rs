@@ -119,6 +119,9 @@ async fn refresh_and_logout() {
     push_cgi(&mock, login_data(10, "W_X_new"));
     let refreshed = client.login().refresh_credential(None).await.unwrap();
     assert_eq!(refreshed.musickey, "W_X_new");
+    // Fields missing from the response are kept, returned ones win.
+    assert_eq!((refreshed.openid.as_str(), refreshed.login_type), ("oid", 1));
+    assert_eq!(refreshed.refresh_key, "rk");
     assert_eq!(client.credential().musickey, "W_X_new");
     let body = last_body(&mock);
     assert_eq!(body["comm"]["tmeLoginType"], "1");

@@ -61,6 +61,35 @@ fn login_error(message: &str, data: Value) -> Error {
     ApiError::login(-1, data).with_message(message).into()
 }
 
+/// The refresh response omits some fields (e.g. `unionid` for QQ logins);
+/// carry them over from the credential being refreshed.
+fn keep_missing(mut new: Credential, old: &Credential) -> Credential {
+    for (field, previous) in [
+        (&mut new.openid, &old.openid),
+        (&mut new.refresh_token, &old.refresh_token),
+        (&mut new.access_token, &old.access_token),
+        (&mut new.unionid, &old.unionid),
+        (&mut new.str_musicid, &old.str_musicid),
+        (&mut new.refresh_key, &old.refresh_key),
+        (&mut new.encrypt_uin, &old.encrypt_uin),
+    ] {
+        if field.is_empty() {
+            field.clone_from(previous);
+        }
+    }
+    for (field, previous) in [
+        (&mut new.expired_at, old.expired_at),
+        (&mut new.musicid, old.musicid),
+        (&mut new.bind_account_type, old.bind_account_type),
+        (&mut new.login_type, old.login_type),
+    ] {
+        if *field == 0 {
+            *field = previous;
+        }
+    }
+    new
+}
+
 fn credential_from(value: Value) -> Result<Credential> {
     Ok(Credential::from_json(&validate_login_result(value)?)?)
 }
@@ -255,7 +284,7 @@ impl LoginApi {
         let data = self
             .login_cgi("music.login.LoginServer", "Login", param)
             .comm("tmeLoginType", target.login_type.to_string())
-            .credential(target)
+            .credential(target.clone())
             .send()
             .await?;
         let refreshed = credential_from(data).map_err(|err| match err {
@@ -264,6 +293,7 @@ impl LoginApi {
             ),
             other => other,
         })?;
+        let refreshed = keep_missing(refreshed, &target);
         if update_client {
             self.client.set_credential(refreshed.clone());
         }
