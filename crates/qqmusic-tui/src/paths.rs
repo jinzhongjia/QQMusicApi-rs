@@ -12,9 +12,9 @@ pub struct Paths {
 }
 
 impl Paths {
-    /// 默认位置：环境变量 `QQMUSIC_TUI_HOME`，否则系统数据目录下的 `qqm`。
+    /// 默认位置：环境变量 `QQM_HOME`，否则系统数据目录下的 `qqm`。
     pub fn new() -> io::Result<Self> {
-        let root = match std::env::var_os("QQMUSIC_TUI_HOME") {
+        let root = match std::env::var_os("QQM_HOME") {
             Some(dir) => PathBuf::from(dir),
             None => dirs::data_dir()
                 .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "无法确定系统数据目录"))?
