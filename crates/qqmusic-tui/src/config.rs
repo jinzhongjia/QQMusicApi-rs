@@ -16,11 +16,13 @@ pub struct Config {
     pub volume: u8,
     /// 播放模式。
     pub mode: PlayMode,
+    /// 切歌、暂停、恢复时的渐入渐出时长（毫秒），0 表示关闭。
+    pub fade_ms: u64,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Self { quality: Quality::High, volume: 80, mode: PlayMode::Loop }
+        Self { quality: Quality::High, volume: 80, mode: PlayMode::Loop, fade_ms: 400 }
     }
 }
 
