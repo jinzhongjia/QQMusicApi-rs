@@ -3,6 +3,7 @@
 //! 引擎是一个 tokio 任务，通过 [`PlayerHandle`] 收发 [`Command`] / [`Event`]，
 //! 可以独立嵌入到其他程序中使用（守护进程只是在外面包了一层 IPC）。
 
+pub mod cdn;
 pub mod stream;
 
 use std::sync::Arc;
@@ -70,6 +71,7 @@ pub fn spawn(client: Client, paths: Paths) -> Result<PlayerHandle, String> {
     let (state_tx, state) = watch::channel(PlayerState::default());
     let (queue_tx, queue) = watch::channel(Arc::new(Vec::new()));
     let (load_tx, load_rx) = mpsc::unbounded_channel();
+    let cdn = Arc::new(cdn::CdnSelector::new(&client));
     let engine = Engine {
         client,
         paths,
@@ -86,6 +88,7 @@ pub fn spawn(client: Client, paths: Paths) -> Result<PlayerHandle, String> {
         duration_ms: 0,
         queue_version: 0,
         fail_streak: 0,
+        cdn,
         load_tx,
         events: events.clone(),
         state_tx,
@@ -151,6 +154,7 @@ struct Engine {
     queue_version: u64,
     /// 连续加载失败次数，避免整张歌单都不可播时无限跳歌。
     fail_streak: usize,
+    cdn: Arc<cdn::CdnSelector>,
     load_tx: mpsc::UnboundedSender<Loaded>,
     events: broadcast::Sender<Event>,
     state_tx: watch::Sender<PlayerState>,
@@ -346,8 +350,9 @@ impl Engine {
         let mixer = self.mixer.clone();
         let quality = self.config.quality;
         let tx = self.load_tx.clone();
+        let cdn = self.cdn.clone();
         tokio::spawn(async move {
-            let result = load(client, mixer, track, quality).await;
+            let result = load(client, mixer, &cdn, track, quality).await;
             let _ = tx.send(Loaded { generation, result });
         });
     }
@@ -535,14 +540,21 @@ fn seek_blocking(sink: Arc<rodio::Player>, position: Duration) {
     });
 }
 
-async fn load(client: Client, mixer: rodio::mixer::Mixer, track: Track, quality: Quality) -> Result<Prepared, String> {
+async fn load(
+    client: Client,
+    mixer: rodio::mixer::Mixer,
+    cdn: &cdn::CdnSelector,
+    track: Track,
+    quality: Quality,
+) -> Result<Prepared, String> {
     let url = client
         .song()
         .playable_url(&track.mid, Some(&track.media_mid), quality)
         .await
         .map_err(|e| format!("获取播放链接失败: {e}"))?
         .ok_or_else(|| "没有可用的播放链接（可能需要会员或无版权）".to_string())?;
-    let (stream, reader, len) = stream::open(client.transport().clone(), &url.url).await?;
+    let full_url = cdn.resolve(&client, &url.url).await;
+    let (stream, reader, len) = stream::open(cdn.transport(), &full_url).await?;
     let hint = url.file_type.extension.trim_start_matches('.').to_string();
     let (sink, duration) = tokio::task::spawn_blocking(move || {
         let mut builder = Decoder::builder().with_data(reader).with_seekable(true).with_hint(&hint);
