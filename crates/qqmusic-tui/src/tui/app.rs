@@ -5,10 +5,11 @@ use std::time::{Duration, Instant};
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use futures::StreamExt;
+use qqmusic_api::error::LoginErrorKind;
 use qqmusic_api::models::login::{QrCodeLoginEvent, QrLoginType};
 use qqmusic_api::modules::lyric::LyricOptions;
 use qqmusic_api::modules::song::Quality;
-use qqmusic_api::{Client, Credential};
+use qqmusic_api::{ApiErrorKind, Client, Credential, Error};
 use ratatui::text::Line;
 use tokio::sync::mpsc::UnboundedSender;
 use tokio::task::JoinHandle;
@@ -65,6 +66,26 @@ pub enum Mode {
     Quality { selected: usize },
     Login(LoginView),
     Help,
+}
+
+/// 扫码登录失败的提示：只有重试可能成功时才提示按 r。
+fn login_failure(e: &Error, kind: QrLoginType) -> String {
+    let Error::Api(api) = e else {
+        return format!("登录失败: {e}，按 r 重试");
+    };
+    match api.kind {
+        ApiErrorKind::Login(LoginErrorKind::DeviceLimit) => {
+            let alt = if kind == QrLoginType::Mobile { "" } else { "，或改用 QQ 音乐 App 扫码登录" };
+            format!("登录失败: 登录设备已达上限，请在 QQ 音乐 App 的登录设备管理中移除不用的设备后按 r 重试{alt}")
+        }
+        ApiErrorKind::Login(LoginErrorKind::AccountRestricted) => {
+            format!("登录失败: {}，请在 QQ 音乐 App 中处理后再登录", api.message)
+        }
+        ApiErrorKind::Login(LoginErrorKind::RateLimit) | ApiErrorKind::Ratelimited { .. } => {
+            format!("登录失败: {}，请稍后再按 r 重试", api.message)
+        }
+        _ => format!("登录失败: {e}，按 r 重试"),
+    }
 }
 
 pub const QUALITIES: [Quality; 3] = [Quality::Lossless, Quality::High, Quality::Standard];
@@ -421,7 +442,7 @@ impl App {
                         QrCodeLoginEvent::Timeout => return send(LoginMsg::Failed("二维码已过期，按 r 重试".into())),
                         QrCodeLoginEvent::Refuse => return send(LoginMsg::Failed("已在手机上拒绝登录".into())),
                     },
-                    Err(e) => return send(LoginMsg::Failed(format!("登录失败: {e}，按 r 重试"))),
+                    Err(e) => return send(LoginMsg::Failed(login_failure(&e, kind))),
                 }
             }
         }));
@@ -695,4 +716,24 @@ impl App {
 
 fn first_selectable(items: &[Item], from: usize) -> usize {
     items.iter().skip(from).position(|i| !matches!(i, Item::Text(_))).map_or(from, |p| from + p)
+}
+
+#[cfg(test)]
+mod tests {
+    use qqmusic_api::ApiError;
+    use serde_json::Value;
+
+    use super::*;
+
+    #[test]
+    fn login_failure_hints() {
+        let api = |code| Error::from(ApiError::login(code, Value::Null));
+        let device = login_failure(&api(20_279), QrLoginType::Qq);
+        assert!(device.contains("登录设备管理") && device.contains("QQ 音乐 App 扫码登录"), "{device}");
+        assert!(!login_failure(&api(20_279), QrLoginType::Mobile).contains("改用"));
+        let restricted = login_failure(&api(20_450), QrLoginType::Qq);
+        assert!(restricted.contains("账号受限") && !restricted.contains("按 r"), "{restricted}");
+        assert!(login_failure(&api(104_604), QrLoginType::Wx).contains("稍后"));
+        assert!(login_failure(&api(5), QrLoginType::Qq).ends_with("按 r 重试"));
+    }
 }
