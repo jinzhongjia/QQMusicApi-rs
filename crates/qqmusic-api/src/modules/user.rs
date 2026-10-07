@@ -98,6 +98,12 @@ fn dislike_body(kind: DislikeType, values: &[i64]) -> Value {
     body
 }
 
+/// Dislike item ids come back as strings but `*Lastid` must be numeric
+/// (a string makes the server answer `10006`).
+fn lastid_value(id: &str) -> Value {
+    id.parse::<i64>().map_or_else(|_| json!(id), Value::from)
+}
+
 fn retcode_ok(data: &Value) -> bool {
     data.get("Retcode").and_then(Value::as_i64) == Some(0)
 }
@@ -193,6 +199,8 @@ impl UserApi {
     }
 
     /// Friends of the current user (page pagination).
+    ///
+    /// Built on the QQ friend chain: WeChat logins have none and get 101010.
     pub fn get_friend(&self, page: i64, num: i64, credential: Option<Credential>) -> Paged<UserFriendListResponse> {
         Paged::new(
             self.login_cgi(
@@ -364,13 +372,13 @@ impl UserApi {
                 let mut next = params.clone();
                 next["Page"] = json!(params["Page"].as_i64().unwrap_or(1) + 1);
                 if let Some(last) = r.songs.last() {
-                    next["SongLastid"] = json!(last.id);
+                    next["SongLastid"] = lastid_value(&last.id);
                 }
                 if let Some(last) = r.singers.last() {
-                    next["SingersLastid"] = json!(last.id);
+                    next["SingersLastid"] = lastid_value(&last.id);
                 }
                 if let Some(last) = r.styles.last() {
-                    next["StyleLastid"] = json!(last.id);
+                    next["StyleLastid"] = lastid_value(&last.id);
                 }
                 Some(next)
             }),
@@ -517,7 +525,7 @@ mod tests {
         let pages = client.user().get_dislike_list(DislikeListKind::Songs, 1, 0, None).collect(None).await.unwrap();
         assert_eq!(pages.len(), 2);
         let req = last_req0(&mock);
-        assert_eq!(req["param"], json!({"Cmd": 3, "Page": 2, "SongLastid": "6"}));
+        assert_eq!(req["param"], json!({"Cmd": 3, "Page": 2, "SongLastid": 6}));
         assert!(mock.last_request().unwrap().query_param("sign").is_some());
 
         push_cgi(&mock, json!({}));
