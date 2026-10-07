@@ -1,4 +1,5 @@
-//! QR code login: `cargo run --example qrcode_login -- qq` (or `wx`).
+//! QR code login: `cargo run --example qrcode_login -- qq` (or `wx`, or
+//! `mobile` for the QQ Music app).
 //!
 //! The QR image is written to `.qqmusic/` and the credential to
 //! `.qqmusic/credential.json` (used by the `song_url` example).
@@ -13,6 +14,7 @@ use qqmusic_api::models::login::{QrCodeLoginEvent, QrLoginType};
 async fn main() -> qqmusic_api::Result<()> {
     let login_type = match std::env::args().nth(1).as_deref() {
         Some("wx") => QrLoginType::Wx,
+        Some("mobile") => QrLoginType::Mobile,
         _ => QrLoginType::Qq,
     };
     std::fs::create_dir_all(".qqmusic")?;
@@ -31,10 +33,21 @@ async fn main() -> qqmusic_api::Result<()> {
         if result.event == QrCodeLoginEvent::Done
             && let Some(credential) = result.credential
         {
-            std::fs::write(".qqmusic/credential.json", credential.to_json_string())?;
+            write_private(".qqmusic/credential.json", &credential.to_json_string())?;
             println!("登录成功, musicid = {}", credential.musicid);
             break;
         }
+    }
+    Ok(())
+}
+
+/// Write a secret file readable only by the owner.
+fn write_private(path: &str, contents: &str) -> std::io::Result<()> {
+    std::fs::write(path, contents)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
     }
     Ok(())
 }
