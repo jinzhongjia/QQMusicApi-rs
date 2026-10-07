@@ -251,16 +251,23 @@ impl Response {
 }
 
 /// Parse `Set-Cookie` header values into name → value pairs.
+///
+/// The same name may be set for several domains, typically a real value for
+/// one and an empty (cleared) value for another (ptlogin does this for
+/// `p_skey`); an empty value never overrides a non-empty one.
 pub fn parse_set_cookies<'a>(values: impl IntoIterator<Item = &'a str>) -> IndexMap<String, String> {
-    values
-        .into_iter()
-        .filter_map(|raw| {
-            let first = raw.split(';').next()?;
-            let (name, value) = first.split_once('=')?;
-            let name = name.trim();
-            (!name.is_empty()).then(|| (name.to_string(), value.trim().to_string()))
-        })
-        .collect()
+    let mut cookies = IndexMap::new();
+    for raw in values {
+        let Some((name, value)) = raw.split(';').next().and_then(|first| first.split_once('=')) else {
+            continue;
+        };
+        let (name, value) = (name.trim(), value.trim());
+        if name.is_empty() || (value.is_empty() && cookies.get(name).is_some_and(|v: &String| !v.is_empty())) {
+            continue;
+        }
+        cookies.insert(name.to_string(), value.to_string());
+    }
+    cookies
 }
 
 /// Streaming HTTP response.
@@ -394,6 +401,18 @@ mod tests {
         assert_eq!(cookies["pt_login_sig"], "xyz");
         assert_eq!(resp.header("content-type"), Some("application/json"));
         assert!(!Response::new(404, "").is_success());
+    }
+
+    #[test]
+    fn empty_cookie_does_not_override_value() {
+        let cookies = parse_set_cookies([
+            "p_skey=real; Domain=music.qq.com",
+            "p_skey=; Domain=graph.qq.com; Expires=Thu, 01 Jan 1970 00:00:00 GMT",
+            "p_uin=; Domain=qq.com",
+            "p_uin=o123; Domain=graph.qq.com",
+        ]);
+        assert_eq!(cookies["p_skey"], "real");
+        assert_eq!(cookies["p_uin"], "o123");
     }
 
     #[tokio::test]
