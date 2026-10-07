@@ -4,6 +4,7 @@
 //! 提供给解码器；读到尚未下载的位置时等待。
 
 use std::io::{self, Read, Seek, SeekFrom};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 use std::time::Duration;
 
@@ -28,6 +29,9 @@ struct Buffer {
 struct Shared {
     buffer: Mutex<Buffer>,
     cond: Condvar,
+    /// 解码器当前读到的位置，用于判断缓冲是否充足。
+    read_pos: AtomicU64,
+    len: Option<u64>,
 }
 
 impl Shared {
@@ -45,6 +49,24 @@ impl StreamHandle {
     /// 已下载字节数。
     pub fn downloaded(&self) -> usize {
         self.shared.lock().data.len()
+    }
+
+    /// 已下载但尚未被解码器读取的字节数，以及下载是否已结束。
+    pub fn ahead(&self) -> (u64, bool) {
+        let guard = self.shared.lock();
+        let read = self.shared.read_pos.load(Ordering::Relaxed);
+        ((guard.data.len() as u64).saturating_sub(read), guard.done)
+    }
+
+    /// 文件总长度（Content-Length）。
+    pub fn content_length(&self) -> Option<u64> {
+        self.shared.len
+    }
+
+    /// 从头创建一个新的读取端（数据保存在内存中，用于暂停后重建解码器）。
+    pub fn reader(&self) -> StreamReader {
+        self.shared.read_pos.store(0, Ordering::Relaxed);
+        StreamReader { shared: self.shared.clone(), pos: 0, len: self.shared.len }
     }
 }
 
@@ -72,6 +94,7 @@ impl Read for StreamReader {
                 let n = buf.len().min(guard.data.len() - start);
                 buf[..n].copy_from_slice(&guard.data[start..start + n]);
                 self.pos += n as u64;
+                self.shared.read_pos.store(self.pos, Ordering::Relaxed);
                 return Ok(n);
             }
             if guard.cancelled {
@@ -103,6 +126,7 @@ impl Seek for StreamReader {
             }
         };
         self.pos = target.ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "seek 位置无效"))?;
+        self.shared.read_pos.store(self.pos, Ordering::Relaxed);
         Ok(self.pos)
     }
 }
@@ -133,7 +157,11 @@ pub async fn open(
     }
     let len = response.header("content-length").and_then(|v| v.trim().parse::<u64>().ok());
 
-    let shared = Arc::new(Shared::default());
+    let shared = Arc::new(Shared { len, ..Default::default() });
+    // 按 Content-Length 一次性分配，避免边下边扩容时内存翻倍。
+    if let Some(len) = len {
+        shared.lock().data.reserve_exact(usize::try_from(len).unwrap_or(0).min(256 << 20));
+    }
     let (progress_tx, mut progress_rx) = watch::channel(0u64);
     let writer = shared.clone();
     let mut body = response.body;

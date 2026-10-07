@@ -41,7 +41,7 @@ fn main() -> ExitCode {
 }
 
 fn runtime() -> io::Result<tokio::runtime::Runtime> {
-    tokio::runtime::Builder::new_multi_thread().enable_all().build()
+    tokio::runtime::Builder::new_multi_thread().worker_threads(2).enable_all().build()
 }
 
 async fn ctl(paths: Paths, action: &str) -> io::Result<()> {
