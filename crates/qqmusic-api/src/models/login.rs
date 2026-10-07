@@ -133,61 +133,6 @@ impl QrLoginResult {
     }
 }
 
-/// Result of sending a phone verification code.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum PhoneLoginEvent {
-    /// Code sent (`0`).
-    Send,
-    /// Captcha required (`20276`).
-    Captcha,
-    /// Too frequent (`100001`).
-    Frequency,
-}
-
-impl PhoneLoginEvent {
-    /// Server code.
-    pub fn code(self) -> i64 {
-        match self {
-            Self::Send => 0,
-            Self::Captcha => 20_276,
-            Self::Frequency => 100_001,
-        }
-    }
-}
-
-/// `send_authcode` result.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct PhoneAuthCodeResult {
-    /// Event.
-    pub event: PhoneLoginEvent,
-    /// Captcha URL for [`PhoneLoginEvent::Captcha`].
-    pub info: Option<String>,
-}
-
-/// Phone number used by the SMS login.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum PhoneNumber {
-    /// Plain number (`phoneNo`).
-    Plain(String),
-    /// Encrypted number (`encryptedPhoneNo`).
-    Encrypted(String),
-}
-
-impl PhoneNumber {
-    pub(crate) fn insert(&self, param: &mut serde_json::Value) {
-        match self {
-            Self::Plain(no) => param["phoneNo"] = no.clone().into(),
-            Self::Encrypted(no) => param["encryptedPhoneNo"] = no.clone().into(),
-        }
-    }
-}
-
-impl From<u64> for PhoneNumber {
-    fn from(value: u64) -> Self {
-        Self::Plain(value.to_string())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -203,11 +148,6 @@ mod tests {
         assert!(QrCodeLoginEvent::Refuse.is_terminal());
         assert!(!QrCodeLoginEvent::Conf.is_terminal());
         assert_eq!(QrLoginType::Mobile.as_str(), "mobile");
-        assert_eq!(PhoneLoginEvent::Captcha.code(), 20_276);
-        let mut param = serde_json::json!({});
-        PhoneNumber::from(138u64).insert(&mut param);
-        PhoneNumber::Encrypted("e".into()).insert(&mut param);
-        assert_eq!(param, serde_json::json!({"phoneNo": "138", "encryptedPhoneNo": "e"}));
         assert!(QrLoginResult::done(Credential::default()).is_done());
     }
 

@@ -1,4 +1,4 @@
-//! Login APIs: QQ / WeChat / QQ Music App QR codes, SMS login, credential
+//! Login APIs: QQ / WeChat / QQ Music App QR codes, credential
 //! refresh and logout.
 
 use std::time::Duration;
@@ -11,9 +11,7 @@ use tokio::time::{Instant, sleep, sleep_until, timeout_at};
 use crate::FromJson;
 use crate::credential::Credential;
 use crate::error::{ApiError, ApiErrorKind, Error, Result};
-use crate::models::login::{
-    PhoneAuthCodeResult, PhoneLoginEvent, PhoneNumber, QrCode, QrCodeLoginEvent, QrLoginResult, QrLoginType, uuid4,
-};
+use crate::models::login::{QrCode, QrCodeLoginEvent, QrLoginResult, QrLoginType, uuid4};
 use crate::mqtt::{ConnectOptions, MqttError, MqttSession, Properties, WsTarget};
 use crate::request::{CgiRequest, HttpSpec};
 use crate::response::RawPayload;
@@ -352,47 +350,6 @@ impl LoginApi {
         stream::unfold(state, MobilePoll::next).boxed()
     }
 
-    /// Send an SMS verification code.
-    pub async fn send_authcode(&self, phone: impl Into<PhoneNumber>, country_code: u32) -> Result<PhoneAuthCodeResult> {
-        let mut param = json!({"tmeAppid": "qqmusic", "areaCode": country_code.to_string()});
-        phone.into().insert(&mut param);
-        let resp: Value = self
-            .cgi("music.login.LoginServer", "SendPhoneAuthCode", param)
-            .comm("tmeLoginMethod", "3")
-            .platform(Platform::Android)
-            .allow_error_codes(crate::response::AllowErrorCodes::All, false)
-            .send()
-            .await?;
-        let code = resp.get("code").and_then(Value::as_i64).unwrap_or(0);
-        let data = resp.get("data").cloned().unwrap_or_else(|| json!({}));
-        let event = match code {
-            0 => PhoneLoginEvent::Send,
-            20_276 => PhoneLoginEvent::Captcha,
-            100_001 => PhoneLoginEvent::Frequency,
-            _ => return Err(ApiError::login(code, data).with_message("发送验证码失败").into()),
-        };
-        let info = (event == PhoneLoginEvent::Captcha)
-            .then(|| data.get("securityURL").and_then(Value::as_str).map(str::to_string))
-            .flatten();
-        Ok(PhoneAuthCodeResult { event, info })
-    }
-
-    /// Log in with an SMS code; the client's credential is replaced.
-    pub async fn phone_authorize(&self, phone: impl Into<PhoneNumber>, auth_code: &str) -> Result<Credential> {
-        let mut param = json!({"code": auth_code, "loginMode": 1});
-        phone.into().insert(&mut param);
-        let data = self
-            .login_cgi("music.login.LoginServer", "Login", param)
-            .comm("tmeLoginMethod", "3")
-            .comm("tmeLoginType", "0")
-            .platform(Platform::Android)
-            .send()
-            .await?;
-        let credential = credential_from(data)?;
-        self.client.set_credential(credential.clone());
-        Ok(credential)
-    }
-
     /// High level QR login flow.
     pub fn qrcode_session(&self, login_type: QrLoginType) -> QrCodeLoginSession {
         QrCodeLoginSession {
@@ -403,11 +360,6 @@ impl LoginApi {
             emit_repeat: false,
             qrcode: None,
         }
-    }
-
-    /// High level SMS login flow.
-    pub fn phone_session(&self, phone: impl Into<PhoneNumber>, country_code: u32) -> PhoneLoginSession {
-        PhoneLoginSession { api: self.clone(), phone: phone.into(), country_code, last_result: None }
     }
 
     async fn get_qq_qr(&self) -> Result<QrCode> {
@@ -972,30 +924,6 @@ impl QrCodeLoginSession {
             }
         }
         Err(login_error("登录流程异常结束", Value::Null))
-    }
-}
-
-/// SMS login flow.
-#[derive(Debug, Clone)]
-pub struct PhoneLoginSession {
-    api: LoginApi,
-    phone: PhoneNumber,
-    country_code: u32,
-    /// Result of the last [`PhoneLoginSession::send_authcode`].
-    pub last_result: Option<PhoneAuthCodeResult>,
-}
-
-impl PhoneLoginSession {
-    /// Send the verification code.
-    pub async fn send_authcode(&mut self) -> Result<PhoneAuthCodeResult> {
-        let result = self.api.send_authcode(self.phone.clone(), self.country_code).await?;
-        self.last_result = Some(result.clone());
-        Ok(result)
-    }
-
-    /// Log in with the received code.
-    pub async fn authorize(&self, auth_code: &str) -> Result<Credential> {
-        self.api.phone_authorize(self.phone.clone(), auth_code).await
     }
 }
 

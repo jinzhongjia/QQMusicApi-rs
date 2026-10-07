@@ -398,42 +398,6 @@ async fn mobile_deadline_while_listening() {
     assert_eq!(kinds, vec![QrCodeLoginEvent::Scan, QrCodeLoginEvent::Timeout]);
 }
 
-#[tokio::test]
-async fn phone_login() {
-    let (client, mock) = mock_client();
-    push_cgi(&mock, json!({}));
-    let result = client.login().send_authcode(13_800_000_000u64, 86).await.unwrap();
-    assert_eq!(result, PhoneAuthCodeResult { event: PhoneLoginEvent::Send, info: None });
-    let body = last_body(&mock);
-    assert_eq!(body["comm"]["tmeLoginMethod"], "3");
-    assert_eq!(body["req_0"]["param"], json!({"tmeAppid": "qqmusic", "areaCode": "86", "phoneNo": "13800000000"}));
-
-    push_cgi_code(&mock, 20_276, json!({"securityURL": "https://captcha"}));
-    let result = client.login().send_authcode(PhoneNumber::Encrypted("enc".into()), 852).await.unwrap();
-    assert_eq!(result.event, PhoneLoginEvent::Captcha);
-    assert_eq!(result.info.as_deref(), Some("https://captcha"));
-    assert_eq!(last_req0(&mock)["param"]["encryptedPhoneNo"], "enc");
-    push_cgi_code(&mock, 100_001, json!({}));
-    assert_eq!(client.login().send_authcode(1u64, 86).await.unwrap().event, PhoneLoginEvent::Frequency);
-    push_cgi_code(&mock, 7, json!({}));
-    let err = client.login().send_authcode(1u64, 86).await.unwrap_err();
-    assert_eq!(api_kind(&err), &ApiErrorKind::Login(LoginErrorKind::Generic));
-
-    let mut session = client.login().phone_session(13_800_000_000u64, 86);
-    push_cgi(&mock, json!({}));
-    session.send_authcode().await.unwrap();
-    assert_eq!(session.last_result.as_ref().unwrap().event, PhoneLoginEvent::Send);
-    push_cgi(&mock, login_data(77, "Q_H_L_p"));
-    let cred = session.authorize("1234").await.unwrap();
-    assert_eq!(cred.musicid, 77);
-    assert_eq!(client.credential().musicid, 77);
-    let body = last_body(&mock);
-    assert_eq!(body["comm"]["tmeLoginType"], "0");
-    assert_eq!(body["req_0"]["param"], json!({"code": "1234", "loginMode": 1, "phoneNo": "13800000000"}));
-    push_cgi_code(&mock, 20_271, json!({}));
-    assert!(session.authorize("0000").await.is_err());
-}
-
 #[tokio::test(start_paused = true)]
 async fn qr_session_polls_dedupes_and_backs_off() {
     let (client, mock) = mock_client();
