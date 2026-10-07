@@ -34,6 +34,8 @@ jobs:
         with:
           components: clippy
       - uses: Swatinem/rust-cache@v2
+      - name: install ALSA headers (qqmusic-tui audio output)
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
       - run: cargo clippy --workspace --all-targets --all-features -- -D warnings
       - run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
 
@@ -48,6 +50,9 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - name: install ALSA headers (qqmusic-tui audio output)
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
       - name: default features (graviola TLS)
         run: cargo test --workspace
       - name: all features (aws-lc-rs TLS)
@@ -98,6 +103,8 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@1.89
       - uses: Swatinem/rust-cache@v2
+      - name: install ALSA headers (qqmusic-tui audio output)
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
       - run: cargo check --workspace --all-features --all-targets
 
   docs:
@@ -109,5 +116,7 @@ jobs:
       - uses: actions/checkout@v5
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
+      - name: install ALSA headers (qqmusic-tui audio output)
+        run: sudo apt-get update && sudo apt-get install -y libasound2-dev
       - run: cargo doc --workspace --no-deps --all-features
       - run: cargo doc -p qqmusic-api --no-deps --no-default-features
