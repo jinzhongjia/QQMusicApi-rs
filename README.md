@@ -9,6 +9,8 @@ QQ 音乐 API 的 Rust 异步客户端库，是 Python 项目 [QQMusicApi](https
 
 使用示例见 [`crates/qqmusic-api/examples`](crates/qqmusic-api/examples)，API 文档可用 `cargo doc --open` 查看。
 
+[`crates/qqmusic-tui`](crates/qqmusic-tui) 是基于本库的终端播放器（go-musicfox 风格，界面与后台播放分离，支持三端系统媒体控制）。
+
 ## 许可证
 
 [GPL-3.0](LICENSE)，与上游 QQMusicApi 保持一致。

@@ -2,7 +2,7 @@
 
 use std::borrow::Cow;
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
 use crate::credential::Credential;
@@ -263,7 +263,7 @@ impl From<String> for SongQuery {
 }
 
 /// Playback quality tier (bypass quality ladder).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Quality {
     /// Lossless (FLAC / OGG 640).

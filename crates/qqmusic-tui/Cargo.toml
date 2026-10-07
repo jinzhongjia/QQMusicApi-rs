@@ -1,0 +1,70 @@
+[package]
+name = "qqmusic-tui"
+description = "go-musicfox 风格的 QQ 音乐终端播放器：TUI 与后台播放进程分离，支持系统媒体控制"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+authors.workspace = true
+readme = "README.md"
+keywords = ["qqmusic", "music", "tui", "player"]
+categories = ["command-line-utilities", "multimedia::audio"]
+
+[features]
+default = ["tui", "media-controls"]
+## 播放引擎（rodio / symphonia），守护进程依赖它。
+player = ["dep:rodio"]
+## 系统媒体控制：macOS Now Playing、Windows SMTC、Linux MPRIS。
+media-controls = ["player", "dep:souvlaki", "dep:dispatch", "dep:objc2", "dep:objc2-app-kit", "dep:windows-sys"]
+## 终端界面（ratatui + crossterm）。
+tui = ["dep:ratatui", "dep:crossterm", "dep:image"]
+
+[dependencies]
+qqmusic-api.workspace = true
+dirs = "6"
+fastrand = "2"
+futures = "0.3"
+interprocess = { version = "2", features = ["tokio"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time", "io-util", "signal"] }
+
+rodio = { version = "0.22", optional = true, default-features = false, features = ["playback", "flac", "mp3", "mp4", "vorbis"] }
+# use_zbus 只作用于 Linux（纯 Rust 的 D-Bus，无需 libdbus）。
+souvlaki = { version = "0.8", optional = true, default-features = false, features = ["use_zbus"] }
+
+ratatui = { version = "0.30", optional = true }
+crossterm = { version = "0.29", optional = true, features = ["event-stream"] }
+image = { version = "0.25", optional = true, default-features = false, features = ["png", "jpeg"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+dispatch = { version = "0.2", optional = true }
+objc2 = { version = "0.6", optional = true }
+objc2-app-kit = { version = "0.3", optional = true, default-features = false, features = [
+    "std",
+    "NSApplication",
+    "NSResponder",
+    "NSRunningApplication",
+] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", optional = true, features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_System_LibraryLoader",
+    "Win32_UI_WindowsAndMessaging",
+] }
+
+# 不继承 workspace 的 `unsafe_code = "forbid"`：Windows SMTC 需要一个隐藏窗口句柄，
+# 仅 `media::windows` 模块局部放开。
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+
+[[bin]]
+name = "qqmusic-tui"
+path = "src/main.rs"
+required-features = ["tui", "media-controls"]
