@@ -32,7 +32,7 @@ qqm daemon       # 前台运行播放进程（调试用）
 默认开启 `tui` + `media-controls`。只想控制一个正在运行的播放进程：
 
 ```toml
-qqmusic-tui = { version = "0.1", default-features = false }
+qqmusic-tui = { version = "0.0.1", default-features = false }
 ```
 
 ```rust,no_run
