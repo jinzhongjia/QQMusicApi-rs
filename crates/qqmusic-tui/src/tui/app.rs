@@ -396,6 +396,9 @@ impl App {
             }
             LoginMsg::Failed(e) => {
                 if let Mode::Login(view) = &mut self.mode {
+                    // 二维码已失效，不再显示，免得被误以为还能扫。
+                    view.qr.clear();
+                    view.path = None;
                     view.status = e;
                 } else {
                     self.toast(e);
