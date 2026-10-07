@@ -119,8 +119,13 @@ pub fn unwrap_cgi_envelope(response: &Response, expected_count: usize) -> Result
     if response.body.is_empty() {
         return Err(Error::api_data("响应无内容"));
     }
+    // Some write CGIs echo GBK-encoded strings (e.g. `DelSonglist`'s
+    // `dirName`), which strict UTF-8 parsing rejects; retry lossily.
     let payload: Value =
-        serde_json::from_slice(&response.body).map_err(|_| Error::api_data("响应内容非有效 JSON 格式"))?;
+        serde_json::from_slice(&response.body).or_else(|_| serde_json::from_str(&response.text())).map_err(|_| {
+            let snippet: String = response.text().chars().take(200).collect();
+            Error::api_data_with("响应内容非有效 JSON 格式", Value::String(snippet))
+        })?;
     let Value::Object(mut map) = payload else {
         return Err(Error::api_data("响应内容非 JSON 对象"));
     };
@@ -190,6 +195,16 @@ mod tests {
         assert!(items[2].is_none());
         // missing outer code means success
         assert!(unwrap_cgi_envelope(&resp(json!({"req_0": {}})), 1).is_ok());
+    }
+
+    #[test]
+    fn envelope_tolerates_non_utf8_strings() {
+        // "我喜欢" in GBK, as echoed by `DelSonglist`.
+        let mut body = br#"{"code":0,"req_0":{"code":0,"data":{"retCode":0,"dirName":""#.to_vec();
+        body.extend_from_slice(&[0xCE, 0xD2, 0xCF, 0xB2, 0xBB, 0xB6]);
+        body.extend_from_slice(br#""}}}"#);
+        let items = unwrap_cgi_envelope(&Response::new(200, body), 1).unwrap();
+        assert_eq!(items[0].as_ref().unwrap()["data"]["retCode"], 0);
     }
 
     #[test]
