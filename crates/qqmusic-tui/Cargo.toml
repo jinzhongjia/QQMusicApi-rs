@@ -65,6 +65,6 @@ unsafe_code = "deny"
 all = { level = "warn", priority = -1 }
 
 [[bin]]
-name = "qqmusic-tui"
+name = "qqm"
 path = "src/main.rs"
 required-features = ["tui", "media-controls"]

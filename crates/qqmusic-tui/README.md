@@ -10,10 +10,10 @@
 ## 使用
 
 ```sh
-cargo install --path crates/qqmusic-tui
-qqmusic-tui              # 打开界面（自动在后台启动播放进程）
-qqmusic-tui ctl toggle   # 控制后台播放：toggle | play | pause | next | prev | stop | status | quit
-qqmusic-tui daemon       # 前台运行播放进程（调试用）
+cargo install --path crates/qqmusic-tui  # 安装后的命令名为 qqm
+qqm              # 打开界面（自动在后台启动播放进程）
+qqm ctl toggle   # 控制后台播放：toggle | play | pause | next | prev | stop | status | quit
+qqm daemon       # 前台运行播放进程（调试用）
 ```
 
 数据（凭证、设备信息、配置、日志）默认存放在系统数据目录下的 `qqmusic-tui`，可用环境变量 `QQMUSIC_TUI_HOME` 指定。Linux 需要 ALSA 开发库（`libasound2-dev` / `alsa-lib-devel`）。

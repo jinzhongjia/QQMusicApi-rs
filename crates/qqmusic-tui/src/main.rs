@@ -1,4 +1,4 @@
-//! `qqmusic-tui` 命令行入口。
+//! `qqm` 命令行入口。
 
 use std::io;
 use std::process::ExitCode;
@@ -11,13 +11,13 @@ use qqmusic_tui::tui::{self, Launcher};
 
 const USAGE: &str = "\
 用法:
-  qqmusic-tui              打开终端界面（自动启动后台播放进程）
-  qqmusic-tui daemon       前台运行播放进程
-  qqmusic-tui ctl <指令>   控制正在运行的播放进程:
-                           toggle | play | pause | next | prev | stop | status | quit
+  qqm              打开终端界面（自动启动后台播放进程）
+  qqm daemon       前台运行播放进程
+  qqm ctl <指令>   控制正在运行的播放进程:
+                   toggle | play | pause | next | prev | stop | status | quit
 
 环境变量:
-  QQMUSIC_TUI_HOME         数据目录（默认为系统数据目录下的 qqmusic-tui）";
+  QQMUSIC_TUI_HOME 数据目录（默认为系统数据目录下的 qqmusic-tui）";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
