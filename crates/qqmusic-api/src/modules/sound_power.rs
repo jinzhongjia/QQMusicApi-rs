@@ -37,10 +37,13 @@ impl SoundPowerApi {
 
     /// Huge VIP level rules.
     pub fn get_hugevip_rule(&self, credential: Option<Credential>) -> CgiRequest<HugevipLevelRuleResponse> {
-        self.login_cgi("music.soundPower.SoundPowerSvr", "QueryHugevipLevelRule", json!({}), credential)
+        // Unsigned requests are rejected with 500031.
+        self.login_cgi("music.soundPower.SoundPowerSvr", "QueryHugevipLevelRule", json!({}), credential).sign(true)
     }
 
     /// Friend ranking.
+    ///
+    /// Built on the QQ friend chain: WeChat logins have none and get 101010.
     pub fn get_friend_rank(
         &self,
         offset: i64,
@@ -72,7 +75,8 @@ impl SoundPowerApi {
         )
     }
 
-    /// Set ranking privacy.
+    /// Set ranking privacy: `1` hides the user from friends' rankings, `2`
+    /// shows them again (`0` is rejected with `24270103`).
     pub fn set_rank_privacy(&self, status: i64, credential: Option<Credential>) -> CgiRequest<SetRankPrivacyResponse> {
         self.login_cgi("music.activeCenter.FriendRankSvr", "SetPrivacy", json!({"status": status}), credential)
     }
@@ -127,9 +131,12 @@ mod tests {
     async fn sound_power_requests() {
         let (client, mock) = logged_in_client();
         mock.route_url("musicu", reply_all(json!({"status": 1})));
+        mock.route_url("musics", reply_all(json!({"status": 1})));
         client.sound_power().get_detail(None).await.unwrap();
         assert_eq!(last_req0(&mock)["method"], "QueryLevelDetailPage");
         client.sound_power().get_hugevip_rule(None).await.unwrap();
+        assert_eq!(last_req0(&mock)["method"], "QueryHugevipLevelRule");
+        assert!(mock.last_request().unwrap().query_param("sign").is_some());
         client.sound_power().get_friend_rank(10, 5, "u", 3, None).await.unwrap();
         assert_eq!(
             last_req0(&mock)["param"],

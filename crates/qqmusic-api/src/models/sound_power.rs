@@ -99,6 +99,9 @@ pub struct HugevipLevelRuleItem {
     /// Required duration.
     #[json(alias = "needDuration")]
     pub need_duration: i64,
+    /// Number of users who reached this level.
+    #[json(alias = "passNums")]
+    pub pass_nums: i64,
     /// Percent.
     pub percent: String,
 }
@@ -107,6 +110,9 @@ pub struct HugevipLevelRuleItem {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, FromJson)]
 #[json(default)]
 pub struct HugevipLevelRuleResponse {
+    /// Current level.
+    #[json(alias = "currentLevel")]
+    pub current_level: i64,
     /// Current duration.
     #[json(alias = "currentDuration")]
     pub current_duration: i64,
@@ -215,9 +221,9 @@ pub struct ActTaskModulesResponse {
     /// Return message.
     #[json(alias = "retMsg")]
     pub ret_msg: String,
-    /// Task modules.
+    /// Task modules keyed by module id.
     #[json(alias = "taskModules")]
-    pub task_modules: Option<Vec<Value>>,
+    pub task_modules: Map<String, Value>,
     /// Activity info.
     #[json(alias = "actInfo")]
     pub act_info: Map<String, Value>,
@@ -228,6 +234,18 @@ mod tests {
     use super::*;
     use crate::json::from_value;
     use serde_json::json;
+
+    #[test]
+    fn hugevip_rule_model() {
+        let rule: HugevipLevelRuleResponse = from_value(&json!({
+            "rules": [{"level": 1, "name": "白银听感", "needDuration": 10, "passNums": 1617429, "percent": "10.00"}],
+            "currentLevel": 2, "currentDuration": 144, "nextLevelDuration": 360
+        }))
+        .unwrap();
+        assert_eq!((rule.current_level, rule.current_duration, rule.next_level_duration), (2, 144, 360));
+        assert_eq!((rule.rules[0].need_duration, rule.rules[0].pass_nums), (10, 1617429));
+        assert_eq!(rule.rules[0].percent, "10.00");
+    }
 
     #[test]
     fn sound_power_models() {
@@ -244,7 +262,8 @@ mod tests {
         let medal: SoundPowerMedalEntryResponse =
             from_value(&json!({"MedalCnt": 2, "MedalList": [{"PicURL": "u"}]})).unwrap();
         assert_eq!(medal.medal_list[0].pic_url, "u");
-        let tasks: ActTaskModulesResponse = from_value(&json!({"retCode": 0, "taskModules": [{}]})).unwrap();
-        assert_eq!(tasks.task_modules.unwrap().len(), 1);
+        let tasks: ActTaskModulesResponse =
+            from_value(&json!({"retCode": 0, "taskModules": {"Z1jtHy7": {"ID": "Z1jtHy7"}}})).unwrap();
+        assert_eq!(tasks.task_modules["Z1jtHy7"]["ID"], "Z1jtHy7");
     }
 }
