@@ -9,7 +9,7 @@ use ratatui::Frame;
 use ratatui::layout::{Alignment, Constraint, Flex, Layout, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, BorderType, Clear, Paragraph};
+use ratatui::widgets::{Block, BorderType, Clear, Padding, Paragraph, Wrap};
 
 use super::app::{App, MenuLayout, Mode, QUALITIES};
 use super::data::{self, Item, Source};
@@ -124,24 +124,30 @@ pub fn draw(f: &mut Frame, app: &App) {
             f.render_widget(Paragraph::new(lines).block(popup(" 帮助（任意键关闭） ".into())), area);
         }
         Mode::Login(view) => {
-            let qr_width = view.qr.first().map_or(0, |l| l.width() as u16);
-            let width = qr_width.max(44) + 4;
-            let height = view.qr.len() as u16 + 6;
-            let area = centered(f.area(), width, height);
-            f.render_widget(Clear, area);
             let title = match view.kind {
                 qqmusic_api::models::login::QrLoginType::Qq => " QQ 扫码登录 ",
                 qqmusic_api::models::login::QrLoginType::Wx => " 微信扫码登录 ",
                 qqmusic_api::models::login::QrLoginType::Mobile => " QQ 音乐 App 扫码登录 ",
             };
             let mut lines = view.qr.clone();
-            lines.push(Line::default());
+            if !lines.is_empty() {
+                lines.push(Line::default());
+            }
             lines.push(Line::from(view.status.clone()).fg(ACCENT));
             if let Some(path) = &view.path {
                 lines.push(Line::from(format!("二维码图片: {path}")).fg(DIM));
             }
             lines.push(Line::from("Esc 取消 · r 重新获取").fg(DIM));
-            f.render_widget(Paragraph::new(lines).alignment(Alignment::Center).block(popup(title.into())), area);
+            // 按最宽的一行定宽，超出屏幕的行（长提示、长路径）折行显示。
+            let content = lines.iter().map(|l| l.width() as u16).max().unwrap_or(0);
+            let inner = content.max(44).min(f.area().width.saturating_sub(4)).max(1);
+            let height = lines.iter().map(|l| (l.width() as u16).div_ceil(inner).max(1)).sum::<u16>() + 2;
+            // 二维码很大，只清弹窗区域会在两侧露出半截菜单，干脆清掉整屏。
+            f.render_widget(Clear, f.area());
+            let area = centered(f.area(), inner + 4, height);
+            let block = popup(title.into()).padding(Padding::horizontal(1));
+            let paragraph = Paragraph::new(lines).alignment(Alignment::Center).wrap(Wrap { trim: false });
+            f.render_widget(paragraph.block(block), area);
         }
     }
 }
@@ -368,7 +374,8 @@ mod tests {
     use super::*;
     use crate::paths::Paths;
     use crate::protocol::{Event, PlayerState, Track};
-    use crate::tui::app::Msg;
+    use crate::tui::app::{LoginMsg, LoginView, Msg};
+    use qqmusic_api::models::login::QrLoginType;
 
     fn track(i: usize) -> Track {
         Track {
@@ -449,6 +456,18 @@ mod tests {
 
         app.mode = Mode::Help;
         assert!(render(&app, 120, 36).contains("帮助"));
+
+        // 登录弹窗：窄屏下长路径折行显示完整；失败后不再显示旧二维码。
+        let qr = vec![Line::from("█▀▀▀▀▀█ QR"); 10];
+        let path = format!("{}/qrcode/qq-5e024ef5-1f74-435f-9b33-c1abac5cbac1.png", dir.display());
+        app.mode = Mode::Login(LoginView { kind: QrLoginType::Qq, qr, path: Some(path), status: String::new() });
+        let screen = render(&app, 60, 30);
+        assert!(screen.contains("█▀▀▀▀▀█ QR") && screen.contains("cbac1.png"), "{screen}");
+        assert!(!screen.contains("主菜单"), "{screen}");
+        app.handle_msg(Msg::Login(LoginMsg::Failed("登录失败: 登录设备已达上限，请在 QQ 音乐 App 中处理".into())));
+        let screen = render(&app, 40, 30);
+        assert!(!screen.contains("QR") && !screen.contains("二维码图片"), "{screen}");
+        assert!(screen.contains("设备已达上限") && screen.contains("App 中处理"), "{screen}");
         let _ = std::fs::remove_dir_all(dir);
     }
 }
