@@ -3,7 +3,7 @@ resolver = "3"
 members = ["crates/qqmusic-api", "crates/qqmusic-api-derive", "crates/qqmusic-tui"]
 
 [workspace.package]
-version = "0.0.1"
+version = "0.0.2"
 edition = "2024"
 rust-version = "1.89"
 license = "GPL-3.0-only"
@@ -11,8 +11,8 @@ repository = "https://github.com/jinzhongjia/QQMusicApi-rs"
 authors = ["jinzhongjia <mail@nvimer.org>"]
 
 [workspace.dependencies]
-qqmusic-api-derive = { path = "crates/qqmusic-api-derive", version = "0.0.1" }
-qqmusic-api = { path = "crates/qqmusic-api", version = "0.0.1" }
+qqmusic-api-derive = { path = "crates/qqmusic-api-derive", version = "0.0.2" }
+qqmusic-api = { path = "crates/qqmusic-api", version = "0.0.2" }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

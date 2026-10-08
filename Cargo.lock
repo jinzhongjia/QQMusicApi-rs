@@ -2743,7 +2743,7 @@ checksum = "d55d956fa96f5ec02be2e13af0e20391a5aa83d6a074e3ad368959d0fab299ea"
 
 [[package]]
 name = "qqmusic-api"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "aes",
  "async-trait",
@@ -2777,7 +2777,7 @@ dependencies = [
 
 [[package]]
 name = "qqmusic-api-derive"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -2786,7 +2786,7 @@ dependencies = [
 
 [[package]]
 name = "qqmusic-tui"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "crossterm",
  "dirs",
