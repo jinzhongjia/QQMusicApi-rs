@@ -52,7 +52,7 @@ thiserror = "2"
 tokio = { version = "1", features = ["sync", "time", "macros", "rt", "fs"] }
 tracing = { version = "0.1", default-features = false, features = ["std"] }
 url = "2"
-reqwest = { version = "0.13", optional = true, default-features = false, features = ["rustls-no-provider", "gzip", "deflate", "brotli", "http2", "charset", "stream"] }
+reqwest = { version = "0.13", optional = true, default-features = false, features = ["rustls-no-provider", "gzip", "deflate", "brotli", "http2", "stream"] }
 tokio-tungstenite = { version = "0.30", optional = true, default-features = false, features = ["handshake"] }
 rustls = { version = "0.23.18", optional = true, default-features = false, features = ["std", "tls12"] }
 tokio-rustls = { version = "0.26", optional = true, default-features = false }
