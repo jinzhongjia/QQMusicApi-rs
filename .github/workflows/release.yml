@@ -52,6 +52,7 @@ jobs:
           cp crates/qqmusic-tui/README.md "$name/README.md"
           if [ "$RUNNER_OS" = "Windows" ]; then
             cp "target/${{ matrix.target }}/release/qqm.exe" "$name/"
+            cp -R crates/qqmusic-tui/windows "$name/windows"
             7z a "$name.zip" "$name" > /dev/null
             echo "ASSET=$name.zip" >> "$GITHUB_ENV"
           else
