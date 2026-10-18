@@ -39,7 +39,7 @@ Windows 根据应用身份显示 SMTC 卡片的应用名称与图标。便携 ex
 默认开启 `tui` + `media-controls`。只想控制一个正在运行的播放进程：
 
 ```toml
-qqmusic-tui = { version = "0.0.3", default-features = false }
+qqmusic-tui = { version = "0.0.4", default-features = false }
 ```
 
 ```rust,no_run
