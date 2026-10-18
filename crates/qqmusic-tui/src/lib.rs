@@ -36,6 +36,10 @@ pub mod paths;
 #[cfg(feature = "player")]
 pub mod player;
 pub mod protocol;
+#[cfg(any(feature = "player", feature = "tui"))]
+mod recommendation;
+#[cfg(all(test, any(feature = "player", feature = "tui")))]
+mod testing;
 #[cfg(feature = "tui")]
 pub mod tui;
 

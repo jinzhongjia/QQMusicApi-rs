@@ -4,6 +4,9 @@
 //! 可以独立嵌入到其他程序中使用（守护进程只是在外面包了一层 IPC）。
 
 pub mod cdn;
+mod radio;
+#[cfg(test)]
+mod recommendation_tests;
 pub mod stream;
 
 use std::sync::Arc;
@@ -19,6 +22,7 @@ use self::stream::{StreamHandle, StreamReader};
 use crate::config::Config;
 use crate::paths::Paths;
 use crate::protocol::{Command, Event, PlayMode, PlayerState, Status, Track};
+use crate::recommendation::Batch;
 
 /// 播放引擎句柄（可克隆）。
 #[derive(Clone)]
@@ -82,6 +86,7 @@ pub fn spawn(client: Client, paths: Paths) -> Result<PlayerHandle, String> {
         queue: Vec::new(),
         index: None,
         history: Vec::new(),
+        radio: None,
         status: Status::Stopped,
         current: None,
         generation: 0,
@@ -195,6 +200,7 @@ struct Engine {
     index: Option<usize>,
     /// 随机模式下的播放历史，用于「上一首」。
     history: Vec<usize>,
+    radio: Option<radio::Radio>,
     status: Status,
     current: Option<Current>,
     generation: u64,
@@ -223,6 +229,7 @@ impl Engine {
                     Some(command) => self.handle(command),
                 },
                 Some(loaded) = loads.recv() => self.on_loaded(loaded),
+                batch = radio::next_batch(&mut self.radio) => self.on_recommendation(batch),
                 _ = tick.tick() => {
                     ticks += 1;
                     self.on_tick(ticks);
@@ -235,7 +242,9 @@ impl Engine {
 
     fn handle(&mut self, command: Command) {
         match command {
-            Command::Play { tracks, index } => {
+            Command::Play { tracks, index, recommendation } => {
+                self.radio = recommendation.map(|source| radio::Radio::new(source, &tracks));
+                self.fail_streak = 0;
                 self.set_queue(tracks);
                 self.history.clear();
                 if index < self.queue.len() {
@@ -251,6 +260,8 @@ impl Engine {
                 self.set_queue(queue);
                 if self.index.is_none() && start < self.queue.len() {
                     self.play_index(start);
+                } else {
+                    self.continue_recommendations();
                 }
             }
             Command::PlayNext { tracks } => {
@@ -261,6 +272,8 @@ impl Engine {
                 self.set_queue(queue);
                 if self.index.is_none() && count > 0 {
                     self.play_index(at);
+                } else {
+                    self.continue_recommendations();
                 }
             }
             Command::PlayIndex { index } => {
@@ -271,6 +284,7 @@ impl Engine {
             }
             Command::Remove { index } => self.remove(index),
             Command::Clear => {
+                self.radio = None;
                 self.stop();
                 self.index = None;
                 self.history.clear();
@@ -338,6 +352,9 @@ impl Engine {
     }
 
     fn set_queue(&mut self, queue: Vec<Track>) {
+        if let Some(radio) = &mut self.radio {
+            radio.remember(&queue);
+        }
         self.queue = queue;
         self.queue_version += 1;
         self.queue_tx.send_replace(Arc::new(self.queue.clone()));
@@ -426,6 +443,7 @@ impl Engine {
     }
 
     fn on_tick(&mut self, ticks: u64) {
+        self.fetch_recommendations();
         enum Action {
             None,
             End,
@@ -483,6 +501,14 @@ impl Engine {
 
     fn play_index(&mut self, index: usize) {
         let Some(track) = self.queue.get(index).cloned() else { return };
+        if let Some(radio) = &mut self.radio {
+            radio.played.insert(track.mid.clone());
+            radio.waiting = false;
+            if self.status == Status::Stopped {
+                radio.failures = 0;
+                radio.retry_at = tokio::time::Instant::now();
+            }
+        }
         self.release_current();
         self.generation += 1;
         self.index = Some(index);
@@ -549,7 +575,8 @@ impl Engine {
                 let _ = self.events.send(Event::Error { message: format!("《{name}》{message}") });
                 self.fail_streak += 1;
                 self.current = None;
-                if self.fail_streak < self.queue.len() {
+                let limit = if self.radio.is_some() { self.queue.len().min(10) } else { self.queue.len() };
+                if self.fail_streak < limit {
                     self.advance(false);
                 } else {
                     self.fail_streak = 0;
@@ -571,11 +598,23 @@ impl Engine {
                 self.push_history();
                 self.play_index(index);
             }
+            None if self.radio.as_ref().is_some_and(|r| r.failures < radio::MAX_FAILURES) => {
+                self.release_current();
+                self.generation += 1;
+                self.radio.as_mut().unwrap().waiting = true;
+                self.status = Status::Loading;
+                self.playing_quality = None;
+                self.publish();
+                self.fetch_recommendations();
+            }
             None => self.stop(),
         }
     }
 
     fn next_index(&self, auto: bool) -> Option<usize> {
+        if let Some(radio) = &self.radio {
+            return radio.next_index(&self.queue, self.index, self.config.mode, auto);
+        }
         let len = self.queue.len();
         if len == 0 {
             return None;
@@ -643,6 +682,14 @@ impl Engine {
         if self.status != Status::Paused {
             return;
         }
+        if let Some(radio) = &mut self.radio
+            && radio.waiting
+        {
+            radio.waiting = false;
+            radio.failures = 0;
+            radio.retry_at = tokio::time::Instant::now();
+            return self.advance(false);
+        }
         match &self.current {
             Some(Current { sink: Some(sink), .. }) => {
                 let sink = sink.clone();
@@ -696,6 +743,10 @@ impl Engine {
     }
 
     fn stop(&mut self) {
+        if let Some(radio) = &mut self.radio {
+            radio.cancel();
+            radio.waiting = false;
+        }
         self.release_current();
         self.generation += 1;
         self.status = Status::Stopped;
@@ -723,6 +774,73 @@ impl Engine {
     fn save_config(&self) {
         if let Err(e) = self.config.save(&self.paths) {
             eprintln!("保存配置失败: {e}");
+        }
+    }
+
+    fn fetch_recommendations(&mut self) {
+        if self.status != Status::Loading {
+            return;
+        }
+        let Some(radio) = &mut self.radio else { return };
+        if !radio.waiting
+            || radio.pending.is_some()
+            || radio.failures >= radio::MAX_FAILURES
+            || tokio::time::Instant::now() < radio.retry_at
+        {
+            return;
+        }
+        let client = self.client.clone();
+        let source = radio.source;
+        radio.pending = Some(tokio::spawn(async move {
+            tokio::time::timeout(radio::FETCH_TIMEOUT, crate::recommendation::load(&client, source))
+                .await
+                .map_err(|_| "获取推荐歌曲超时".to_string())?
+        }));
+    }
+
+    fn on_recommendation(&mut self, result: Result<Batch, String>) {
+        let Some(radio) = &mut self.radio else { return };
+        radio.pending.take();
+        let (tracks, error) = match result {
+            Ok(batch) => {
+                radio.source = batch.next;
+                let tracks: Vec<_> = batch
+                    .tracks
+                    .into_iter()
+                    .filter(|t| !t.mid.is_empty() && radio.seen.insert(t.mid.clone()))
+                    .collect();
+                (tracks, None)
+            }
+            Err(error) => (Vec::new(), Some(error)),
+        };
+        if tracks.is_empty() {
+            radio.failures += 1;
+            radio.retry_at = tokio::time::Instant::now() + Duration::from_secs(5 << (radio.failures - 1));
+            if let Some(error) = error {
+                let _ = self.events.send(Event::Error { message: format!("推荐续播失败: {error}") });
+            } else if radio.failures >= radio::MAX_FAILURES {
+                let _ = self
+                    .events
+                    .send(Event::Error { message: "推荐续播暂时没有新歌曲，请稍后重试".into() });
+            }
+            if radio.waiting && radio.failures >= radio::MAX_FAILURES && self.status == Status::Loading {
+                self.stop();
+            }
+            return;
+        }
+        radio.failures = 0;
+        let mut queue = std::mem::take(&mut self.queue);
+        queue.extend(tracks);
+        self.set_queue(queue);
+        self.continue_recommendations();
+    }
+
+    fn continue_recommendations(&mut self) {
+        if self.radio.as_ref().is_some_and(|r| r.waiting)
+            && self.status == Status::Loading
+            && self.next_index(false).is_some()
+        {
+            self.advance(false);
         }
     }
 

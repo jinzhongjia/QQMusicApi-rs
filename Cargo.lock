@@ -2797,6 +2797,7 @@ dependencies = [
  "serde",
  "serde_json",
  "souvlaki",
+ "tempfile",
  "tokio",
  "windows-sys 0.61.2",
 ]

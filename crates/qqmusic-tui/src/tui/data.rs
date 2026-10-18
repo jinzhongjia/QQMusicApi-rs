@@ -7,7 +7,7 @@ use qqmusic_api::models::login::QrLoginType;
 use qqmusic_api::modules::search::{SearchOptions, SearchType};
 use qqmusic_api::modules::songlist::SonglistDetailOptions;
 
-use crate::protocol::Track;
+use crate::protocol::{RecommendationSource, Track};
 
 /// 搜索类型。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -177,20 +177,26 @@ pub async fn liked_ids(client: &Client) -> Result<HashSet<i64>, String> {
     Ok(pages.iter().flat_map(|p| p.songs.iter().map(|s| s.id)).collect())
 }
 
+/// 页面条目和推荐续播位置。
+pub struct PageData {
+    pub items: Vec<Item>,
+    pub recommendation: Option<RecommendationSource>,
+}
+
 /// 异步加载一个页面。
-pub async fn load(client: &Client, source: &Source) -> Result<Vec<Item>, String> {
+pub async fn load(client: &Client, source: &Source) -> Result<PageData, String> {
     let err = |e: qqmusic_api::Error| e.to_string();
-    Ok(match source {
-        Source::Guess => {
-            let mut all = Vec::new();
-            for _ in 0..4 {
-                all.extend(client.recommend().get_guess_recommend(None).await.map_err(err)?.songs);
-            }
-            songs(&all)
-        }
-        Source::Radar => {
-            let pages = client.recommend().get_radar_recommend(1).collect(Some(2)).await.map_err(err)?;
-            songs(pages.iter().flat_map(|p| &p.songs))
+    let items = match source {
+        Source::Guess | Source::Radar => {
+            let source = match source {
+                Source::Guess => RecommendationSource::Guess,
+                _ => RecommendationSource::Radar { next_page: 1 },
+            };
+            let batch = crate::recommendation::load(client, source).await?;
+            return Ok(PageData {
+                items: batch.tracks.into_iter().map(Item::Song).collect(),
+                recommendation: Some(batch.next),
+            });
         }
         Source::Liked => {
             let credential = require_login(client)?;
@@ -274,5 +280,6 @@ pub async fn load(client: &Client, source: &Source) -> Result<Vec<Item>, String>
             songs(pages.iter().flat_map(|p| &p.songs))
         }
         Source::Root | Source::Queue | Source::Account => Vec::new(),
-    })
+    };
+    Ok(PageData { items, recommendation: None })
 }

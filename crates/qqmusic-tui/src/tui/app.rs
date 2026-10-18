@@ -18,13 +18,13 @@ use super::data::{self, Action, Item, SearchKind, Source};
 use super::lyric::{self, LyricLine};
 use super::qr;
 use crate::paths::Paths;
-use crate::protocol::{Command, Event, PlayerState, Status, Track};
+use crate::protocol::{Command, Event, PlayerState, RecommendationSource, Status, Track};
 
 /// 发给主循环的消息。
 pub enum Msg {
     Player(Event),
     Disconnected,
-    Loaded { id: u64, result: Result<Vec<Item>, String> },
+    Loaded { id: u64, result: Result<data::PageData, String> },
     Lyric { mid: String, lines: Vec<LyricLine> },
     Liked(HashSet<i64>),
     Nick(String),
@@ -49,6 +49,7 @@ pub struct Page {
     pub selected: usize,
     pub loading: bool,
     pub error: Option<String>,
+    pub recommendation: Option<RecommendationSource>,
 }
 
 /// 登录弹窗。
@@ -203,6 +204,7 @@ impl App {
             source,
             loading: false,
             error: None,
+            recommendation: None,
         };
         self.stack.push(page);
         self.reload();
@@ -299,9 +301,10 @@ impl App {
                 if let Some(page) = self.stack.iter_mut().find(|p| p.id == id) {
                     page.loading = false;
                     match result {
-                        Ok(items) => {
-                            page.selected = page.selected.min(items.len().saturating_sub(1));
-                            page.items = items;
+                        Ok(data) => {
+                            page.selected = page.selected.min(data.items.len().saturating_sub(1));
+                            page.items = data.items;
+                            page.recommendation = data.recommendation;
                             page.selected = first_selectable(&page.items, page.selected);
                         }
                         Err(e) => page.error = Some(e),
@@ -505,7 +508,7 @@ impl App {
                 } else {
                     let (tracks, index) = self.songs_of_page();
                     if let Some(index) = index {
-                        self.send(Command::Play { tracks, index });
+                        self.send(Command::Play { tracks, index, recommendation: self.page().recommendation });
                     }
                 }
             }
@@ -727,6 +730,35 @@ mod tests {
     use serde_json::Value;
 
     use super::*;
+
+    #[tokio::test]
+    async fn playing_recommendations_passes_the_loaded_cursor_to_the_daemon() {
+        use crate::testing::{client, track};
+        use qqmusic_api::transport::mock::MockTransport;
+        use tokio::sync::mpsc;
+
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, _rx) = mpsc::unbounded_channel();
+        let (commands, mut received) = mpsc::unbounded_channel();
+        let mut app = App::new(Paths::with_root(dir.path()).unwrap(), client(&MockTransport::new()), tx, commands);
+        while received.try_recv().is_ok() {}
+        let page = app.page_mut();
+        page.source = Source::Radar;
+        page.items = vec![Item::Song(track("radar"))];
+        page.selected = 0;
+        page.recommendation = Some(RecommendationSource::Radar { next_page: 3 });
+        app.activate();
+        assert!(matches!(
+            received.try_recv().unwrap(),
+            Command::Play { recommendation: Some(RecommendationSource::Radar { next_page: 3 }), .. }
+        ));
+        app.handle_msg(Msg::Loaded {
+            id: app.page().id,
+            result: Ok(data::PageData { items: vec![Item::Song(track("ordinary"))], recommendation: None }),
+        });
+        app.activate();
+        assert!(matches!(received.try_recv().unwrap(), Command::Play { recommendation: None, .. }));
+    }
 
     #[test]
     fn login_failure_hints() {

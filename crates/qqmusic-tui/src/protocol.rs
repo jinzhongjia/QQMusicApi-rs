@@ -135,12 +135,28 @@ pub struct PlayerState {
     pub queue_version: u64,
 }
 
+/// 推荐队列的来源与续播位置。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum RecommendationSource {
+    /// 猜你喜欢，每次请求新一批歌曲。
+    Guess,
+    /// 雷达推荐，下次要请求的页码；一轮结束后回到第一页。
+    Radar { next_page: i64 },
+}
+
 /// 客户端发给守护进程的指令。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "cmd", rename_all = "snake_case")]
 pub enum Command {
     /// 替换队列并从 `index` 开始播放。
-    Play { tracks: Vec<Track>, index: usize },
+    Play {
+        tracks: Vec<Track>,
+        index: usize,
+        /// 推荐续播来源；省略时按普通列表播放。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        recommendation: Option<RecommendationSource>,
+    },
     /// 追加到队列末尾（队列为空时开始播放）。
     Append { tracks: Vec<Track> },
     /// 插入到当前曲目之后。
@@ -193,4 +209,24 @@ pub enum Event {
     Error { message: String },
     /// 守护进程即将退出。
     Shutdown,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn play_without_recommendation_remains_wire_compatible() {
+        let old = json!({"cmd": "play", "tracks": [], "index": 0});
+        let command: Command = serde_json::from_value(old.clone()).unwrap();
+        assert_eq!(command, Command::Play { tracks: Vec::new(), index: 0, recommendation: None });
+        assert_eq!(serde_json::to_value(command).unwrap(), old);
+        let radio = Command::Play {
+            tracks: Vec::new(),
+            index: 0,
+            recommendation: Some(RecommendationSource::Radar { next_page: 3 }),
+        };
+        assert_eq!(serde_json::from_value::<Command>(serde_json::to_value(&radio).unwrap()).unwrap(), radio);
+    }
 }

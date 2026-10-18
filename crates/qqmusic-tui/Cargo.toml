@@ -56,6 +56,10 @@ windows-sys = { version = "0.61", optional = true, features = [
     "Win32_UI_WindowsAndMessaging",
 ] }
 
+[dev-dependencies]
+tempfile = "3"
+tokio = { version = "1", features = ["test-util"] }
+
 # 不继承 workspace 的 `unsafe_code = "forbid"`：Windows SMTC 需要一个隐藏窗口句柄，
 # 仅 `media::windows` 模块局部放开。
 [lints.rust]
