@@ -45,8 +45,8 @@ fn vkey_reply(purls: &[&str]) -> Response {
 async fn playable_url_uses_bypass_comm_and_quality_ladder() {
     let mock = MockTransport::new();
     let client = client_with(&mock, BypassConfig::default());
-    // Lossless tiers (FLAC, OGG 640) unavailable, MP3 320 available.
-    mock.push_response(vkey_reply(&["", "", "M800mid.mp3?vkey=1", "O800mid.ogg?vkey=2", "M500mid.mp3?vkey=3"]));
+    // Lossless tier (FLAC) unavailable, MP3 320 available.
+    mock.push_response(vkey_reply(&["", "M800mid.mp3?vkey=1", "M500mid.mp3?vkey=3"]));
 
     let url = client.song().playable_url("mid", None, Quality::Lossless).await.unwrap().expect("url");
     assert_eq!(url.quality, Quality::High);
@@ -63,11 +63,11 @@ async fn playable_url_uses_bypass_comm_and_quality_ladder() {
     assert_eq!(comm["authst"], "Q_H_L_secret");
     let param = &sent["req_0"]["param"];
     assert_eq!(param["guid"], guid.as_str(), "guid must match the device identity");
-    assert_eq!(param["filename"].as_array().unwrap().len(), 5);
-    assert_eq!(param["filename"][2], "M800midmid.mp3");
+    assert_eq!(param["filename"].as_array().unwrap().len(), 3);
+    assert_eq!(param["filename"][1], "M800midmid.mp3");
 
     // Nothing playable.
-    mock.push_response(vkey_reply(&["", "", "", "", ""]));
+    mock.push_response(vkey_reply(&["", "", ""]));
     assert!(client.song().playable_url("mid", None, Quality::Lossless).await.unwrap().is_none());
 }
 
@@ -82,7 +82,7 @@ async fn bypass_is_fully_configurable() {
     let sent = body(&mock.last_request().unwrap());
     assert_eq!(sent["comm"]["ct"].to_string().trim_matches('"'), "24");
     assert_eq!(sent["comm"]["tmeLoginType"], "2");
-    assert!(sent["req_0"]["param"]["filename"][0].as_str().unwrap().contains("mediamedia"));
+    assert_eq!(sent["req_0"]["param"]["filename"][0], "M500media.mp3", "same rule as SongFileType::filename");
 
     // Disabled bypass: ordinary comm of the client platform.
     client.set_bypass(BypassConfig::disabled());

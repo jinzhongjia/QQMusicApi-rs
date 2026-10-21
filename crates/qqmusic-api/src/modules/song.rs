@@ -59,9 +59,12 @@ file_types! {
     NAC = ("TL01", ".nac", false);
     /// FLAC.
     FLAC = ("F000", ".flac", false);
-    /// OGG 640k.
+    /// OGG 640k. For songs with an accompaniment track the vkey server answers this code with
+    /// the [`ACCOM`](Self::ACCOM) file whatever mid the filename carries, so it is not a lossless
+    /// tier of [`DEFAULT_LADDER`].
     OGG_640 = ("O801", ".ogg", false);
-    /// OGG 320k.
+    /// OGG 320k. The vkey server grants a `purl` for it even when the CDN has no such file (404),
+    /// so it is not part of [`DEFAULT_LADDER`].
     OGG_320 = ("O800", ".ogg", false);
     /// OGG 192k.
     OGG_192 = ("O600", ".ogg", false);
@@ -107,7 +110,8 @@ file_types! {
     TRY = ("RS02", ".mp3", false);
     /// Preview OGG 640k.
     TRY_OGG_640 = ("O802", ".ogg", false);
-    /// Accompaniment.
+    /// Accompaniment stems (media mid `Song::vs[9]`, size `File::size_new[5]`): 4-channel Vorbis,
+    /// vocals on channels 0/1 and backing on 2/3 – a stereo player renders it as vocals only.
     ACCOM = ("O801", ".ogg", false);
     /// Multi track.
     MULTI = ("O601", ".ogg", false);
@@ -266,7 +270,7 @@ impl From<String> for SongQuery {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Quality {
-    /// Lossless (FLAC / OGG 640).
+    /// Lossless (FLAC).
     Lossless,
     /// High (320k).
     #[default]
@@ -296,12 +300,14 @@ impl Quality {
     }
 }
 
-/// Quality ladder (highest first) – playable, unencrypted formats only.
-pub const DEFAULT_LADDER: [(Quality, SongFileType); 5] = [
+/// Quality ladder (highest first) – unencrypted stereo files the CDN reliably serves.
+///
+/// Lossless means FLAC: `O801` ([`SongFileType::OGG_640`]) is served as the 4-channel
+/// accompaniment stems ([`SongFileType::ACCOM`]), so songs without FLAC fall back to 320k.
+/// [`SongFileType::OGG_320`] is left out because its `purl` often points at a missing file.
+pub const DEFAULT_LADDER: [(Quality, SongFileType); 3] = [
     (Quality::Lossless, SongFileType::FLAC),
-    (Quality::Lossless, SongFileType::OGG_640),
     (Quality::High, SongFileType::MP3_320),
-    (Quality::High, SongFileType::OGG_320),
     (Quality::Standard, SongFileType::MP3_128),
 ];
 
@@ -448,9 +454,7 @@ impl SongApi {
         if ladder.is_empty() {
             return Err(Error::invalid_argument("quality ladder 不能为空"));
         }
-        let file_mid = media_mid.filter(|m| !m.is_empty()).unwrap_or(mid);
-        let filenames: Vec<String> =
-            ladder.iter().map(|(_, ty)| format!("{}{file_mid}{file_mid}{}", ty.code, ty.extension)).collect();
+        let filenames: Vec<String> = ladder.iter().map(|(_, ty)| ty.filename(mid, media_mid)).collect();
         let response: GetSongUrlsResponse = self
             .cgi(
                 "music.vkey.GetVkey",
@@ -617,9 +621,10 @@ mod tests {
     #[test]
     fn ladder_selection() {
         let ladder = ladder_from(&DEFAULT_LADDER, Quality::High);
-        assert_eq!(ladder.len(), 3);
+        assert_eq!(ladder.len(), 2);
         assert_eq!(ladder[0].1, SongFileType::MP3_320);
-        assert_eq!(ladder_from(&DEFAULT_LADDER, Quality::Lossless).len(), 5);
+        assert_eq!(ladder_from(&DEFAULT_LADDER, Quality::Lossless).len(), 3);
+        assert!(!DEFAULT_LADDER.iter().any(|(_, ty)| *ty == SongFileType::ACCOM), "O801 is the accompaniment");
         assert_eq!(ladder_from(&DEFAULT_LADDER, Quality::Standard).len(), 1);
     }
 
@@ -694,7 +699,7 @@ mod tests {
     async fn playable_url_picks_highest_available() {
         let (client, mock) = logged_in_client();
         client.set_bypass(BypassConfig::default().with_fixed_ct(13));
-        push_cgi(&mock, json!({"midurlinfo": [{"purl": ""}, {"purl": ""}, {"purl": "M800x.mp3?vkey=1"}]}));
+        push_cgi(&mock, json!({"midurlinfo": [{"purl": ""}, {"purl": "M800x.mp3?vkey=1"}]}));
         let url = client.song().playable_url("mid1", None, Quality::Lossless).await.unwrap().unwrap();
         assert_eq!(url.quality, Quality::High);
         assert_eq!(url.file_type, SongFileType::MP3_320);
@@ -702,12 +707,12 @@ mod tests {
         assert_eq!(url.filename, "M800mid1mid1.mp3");
         let body = last_body(&mock);
         assert_eq!(body["comm"], json!({"ct": "13", "cv": "0", "qq": "10001", "authst": "Q_H_L_key"}));
-        assert_eq!(body["req_0"]["param"]["songmid"].as_array().unwrap().len(), 5);
+        assert_eq!(body["req_0"]["param"]["songmid"].as_array().unwrap().len(), 3);
         assert!(body["req_0"]["param"].get("uin").is_none());
 
         push_cgi(&mock, json!({"midurlinfo": [{"purl": ""}]}));
         assert!(client.song().playable_url("m", Some("media"), Quality::Standard).await.unwrap().is_none());
-        assert_eq!(last_req0(&mock)["param"]["filename"], json!(["M500mediamedia.mp3"]));
+        assert_eq!(last_req0(&mock)["param"]["filename"], json!(["M500media.mp3"]));
         assert!(client.song().playable_url_with_ladder("m", None, &[]).await.is_err());
     }
 
