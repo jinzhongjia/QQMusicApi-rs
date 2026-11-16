@@ -56,22 +56,39 @@ pub fn build_client(paths: &Paths) -> qqmusic_api::Result<Client> {
     builder.build()
 }
 
-/// 读取已保存的登录凭证。
+/// 读取已保存的登录凭证；读不到或无效时返回 `None`。
 pub fn load_credential(paths: &Paths) -> Option<Credential> {
-    let text = std::fs::read_to_string(paths.credential()).ok()?;
-    Credential::from_json_str(&text).ok().filter(Credential::is_valid)
+    read_credential(paths).ok().flatten()
 }
 
-/// 保存登录凭证（Unix 下权限 0600）。
+/// 读取已保存的登录凭证，区分「没有凭证」（`Ok(None)`）与「读取失败」（`Err`）。
+pub fn read_credential(paths: &Paths) -> std::io::Result<Option<Credential>> {
+    let text = match std::fs::read_to_string(paths.credential()) {
+        Ok(text) => text,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    let credential = Credential::from_json_str(&text)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, format!("凭证文件已损坏: {e}")))?;
+    Ok(Some(credential).filter(Credential::is_valid))
+}
+
+/// 保存登录凭证（Unix 下权限 0600）。先写临时文件再改名，失败时不破坏原有凭证。
 pub fn save_credential(paths: &Paths, credential: &Credential) -> std::io::Result<()> {
     let path = paths.credential();
-    std::fs::write(&path, credential.to_json_string())?;
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600))?;
-    }
-    Ok(())
+    let tmp = path.with_extension("json.tmp");
+    let write = || {
+        std::fs::write(&tmp, credential.to_json_string())?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600))?;
+        }
+        std::fs::rename(&tmp, &path)
+    };
+    write().inspect_err(|_| {
+        let _ = std::fs::remove_file(&tmp);
+    })
 }
 
 /// 删除已保存的登录凭证。
@@ -79,5 +96,56 @@ pub fn remove_credential(paths: &Paths) -> std::io::Result<()> {
     match std::fs::remove_file(paths.credential()) {
         Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e),
         _ => Ok(()),
+    }
+}
+
+/// 去掉文本中 URL 的查询串（音频链接的查询串里带有 vkey 等临时凭据），用于日志与错误提示。
+pub fn redact(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(start) = rest.find("http://").or_else(|| rest.find("https://")) {
+        let (before, url) = rest.split_at(start);
+        out.push_str(before);
+        let end =
+            url.find(|c: char| c.is_whitespace() || matches!(c, '"' | '\'' | ')' | '>' | '）')).unwrap_or(url.len());
+        match url[..end].split_once('?') {
+            Some((base, _)) => {
+                out.push_str(base);
+                out.push_str("?…");
+            }
+            None => out.push_str(&url[..end]),
+        }
+        rest = &url[end..];
+    }
+    out.push_str(rest);
+    out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn redact_strips_url_queries_only() {
+        let text = "下载失败: error sending request for url (https://cdn.example/a/b.flac?vkey=SECRET&uin=1) 超时";
+        assert_eq!(redact(text), "下载失败: error sending request for url (https://cdn.example/a/b.flac?…) 超时");
+        assert_eq!(redact("http://a/b?x=1 和 https://c/d"), "http://a/b?… 和 https://c/d");
+        assert_eq!(redact("没有链接？没有"), "没有链接？没有");
+    }
+
+    #[test]
+    fn credential_roundtrip_and_failures_are_distinguished() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = Paths::with_root(dir.path()).unwrap();
+        assert!(read_credential(&paths).unwrap().is_none());
+        save_credential(&paths, &Credential::new(7, "key")).unwrap();
+        assert_eq!(read_credential(&paths).unwrap().unwrap().musicid, 7);
+        assert!(!paths.credential().with_extension("json.tmp").exists());
+        std::fs::write(paths.credential(), "{ not json").unwrap();
+        assert!(read_credential(&paths).is_err());
+        assert!(load_credential(&paths).is_none());
+        remove_credential(&paths).unwrap();
+        remove_credential(&paths).unwrap();
+        assert!(read_credential(&paths).unwrap().is_none());
     }
 }

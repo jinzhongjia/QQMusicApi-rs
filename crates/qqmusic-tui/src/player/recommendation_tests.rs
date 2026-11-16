@@ -4,46 +4,33 @@ use crate::testing::{client, reply, track};
 use qqmusic_api::transport::mock::MockTransport;
 use serde_json::json;
 
-fn fixture() -> (Engine, mpsc::UnboundedReceiver<Loaded>, tempfile::TempDir, MockTransport) {
+pub(super) fn fixture() -> (Engine, mpsc::UnboundedReceiver<Internal>, tempfile::TempDir, MockTransport) {
     let dir = tempfile::tempdir().unwrap();
     let paths = Paths::with_root(dir.path()).unwrap();
     let mock = MockTransport::new();
     let client = client(&mock);
-    let (events, _) = broadcast::channel(64);
+    let (events, _) = broadcast::channel(256);
     let (state_tx, _) = watch::channel(PlayerState::default());
-    let (queue_tx, _) = watch::channel(Arc::new(Vec::new()));
-    let (load_tx, loads) = mpsc::unbounded_channel();
+    let (queue_tx, _) = watch::channel(Arc::new(QueueSnapshot::default()));
+    let (tx, internal) = mpsc::unbounded_channel();
     let (mixer, _) = rodio::mixer::mixer(2.try_into().unwrap(), 44100.try_into().unwrap());
-    let engine = Engine {
-        cdn: Arc::new(cdn::CdnSelector::new(&client)),
-        client,
+    let engine = Engine::new(
+        client.clone(),
         paths,
-        config: Config { fade_ms: 0, ..Default::default() },
-        output: Output { mixer: Some(mixer), close: None },
-        fade_token: Arc::default(),
-        idle_ticks: 0,
-        queue: Vec::new(),
-        index: None,
-        history: Vec::new(),
-        radio: None,
-        status: Status::Stopped,
-        current: None,
-        generation: 0,
-        resume_at: None,
-        playing_quality: None,
-        duration_ms: 0,
-        queue_version: 0,
-        fail_streak: 0,
-        load_tx,
+        Config { fade_ms: 0, ..Default::default() },
+        Arc::new(cdn::CdnSelector::new(&client)),
+        Output { mixer: Some(mixer), close: None },
+        tx,
         events,
         state_tx,
         queue_tx,
-    };
-    (engine, loads, dir, mock)
+    );
+    (engine, internal, dir, mock)
 }
 
 fn seed(engine: &mut Engine) {
     engine.queue = vec![track("old")];
+    engine.ids = engine.fresh_ids(1);
     engine.index = Some(0);
     engine.status = Status::Playing;
     let mut radio = radio::Radio::new(RecommendationSource::Radar { next_page: 3 }, &engine.queue);
@@ -56,6 +43,7 @@ async fn next_batch_starts_only_after_the_last_track_ends_and_requests_once() {
     let (mut engine, _loads, _dir, mock) = fixture();
     seed(&mut engine);
     engine.queue.extend((1..20).map(|n| track(&format!("initial-{n}"))));
+    engine.ids = engine.fresh_ids(20);
     mock.push_response(reply(json!({"VecSongs": [{"Track": {"id": 1, "mid": "new"}}], "HasMore": false})));
     for index in [0, 17, 19] {
         engine.index = Some(index);
@@ -89,7 +77,7 @@ async fn background_engine_fetches_the_next_batch_without_a_tui_connection() {
     let (commands, rx) = mpsc::unbounded_channel();
     let task = tokio::spawn(engine.run(rx, loads));
     tokio::time::timeout(Duration::from_secs(2), queue.changed()).await.unwrap().unwrap();
-    assert_eq!(queue.borrow().iter().map(|t| t.mid.as_str()).collect::<Vec<_>>(), ["old", "new"]);
+    assert_eq!(queue.borrow().tracks.iter().map(|t| t.mid.as_str()).collect::<Vec<_>>(), ["old", "new"]);
     assert_eq!(mock.requests().first().unwrap().json_body().unwrap()["req_0"]["param"]["Page"], 3);
     commands.send(Command::Shutdown).unwrap();
     task.await.unwrap();
@@ -207,6 +195,7 @@ async fn shuffled_radio_consumes_unplayed_songs_before_waiting_for_more() {
     let (mut engine, _loads, _dir, _mock) = fixture();
     seed(&mut engine);
     engine.queue.extend([track("second"), track("third")]);
+    engine.ids = engine.fresh_ids(3);
     engine.config.mode = PlayMode::Shuffle;
     let first = engine.next_index(true).unwrap();
     assert_ne!(first, 0);
@@ -223,7 +212,7 @@ async fn manually_appended_song_resumes_a_waiting_radio() {
     let (mut engine, _loads, _dir, _mock) = fixture();
     seed(&mut engine);
     engine.on_track_end();
-    engine.handle(Command::Append { tracks: vec![track("manual")] });
+    engine.handle(Command::Append { tracks: vec![track("manual")], tag: None });
     assert_eq!(engine.index, Some(1));
     assert!(!engine.radio.as_ref().unwrap().waiting);
     assert!(engine.radio.as_ref().unwrap().seen.contains("manual"));

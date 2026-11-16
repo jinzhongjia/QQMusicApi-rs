@@ -42,7 +42,8 @@ impl MessageReader {
             }
             match serde_json::from_str(&line) {
                 Ok(message) => return Ok(Some(message)),
-                Err(e) => eprintln!("忽略无法解析的 IPC 消息: {e}: {line}"),
+                // 只记录消息类型，不把整行内容（可能很长）写进日志。
+                Err(e) => eprintln!("忽略无法解析的 IPC 消息: {e}（{} 字节）", line.len()),
             }
         }
         Ok(None)

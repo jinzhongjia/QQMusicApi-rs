@@ -4,6 +4,8 @@
 //! TUI 退出后它继续播放，可通过系统媒体控制或再次打开 TUI 操作。
 
 use std::io;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 
 use interprocess::local_socket::tokio::Stream;
@@ -81,8 +83,14 @@ pub async fn serve(paths: Paths) -> io::Result<()> {
 async fn handle_connection(conn: Stream, player: PlayerHandle) {
     let (mut reader, writer) = ipc::split(conn);
     let events = player.subscribe();
-    let push = tokio::spawn(push_events(writer, events, player.clone()));
+    // 客户端用 Hello 声明的协议版本；没声明过的按旧客户端对待。
+    let protocol = Arc::new(AtomicU32::new(0));
+    let push = tokio::spawn(push_events(writer, events, player.clone(), protocol.clone()));
     while let Ok(Some(command)) = reader.recv::<Command>().await {
+        if let Command::Hello { protocol: version } = command {
+            protocol.store(version, Ordering::Relaxed);
+            continue;
+        }
         if !player.send(command) {
             break;
         }
@@ -90,9 +98,20 @@ async fn handle_connection(conn: Stream, player: PlayerHandle) {
     push.abort();
 }
 
-async fn push_events(mut writer: MessageWriter, mut events: broadcast::Receiver<Event>, player: PlayerHandle) {
+/// 旧客户端解析不了的事件类型不发给它（它会把解析失败打印到终端上）。
+fn understood_by(event: &Event, protocol: u32) -> bool {
+    protocol >= 2 || !matches!(event, Event::Done { .. } | Event::CredentialChanged { .. })
+}
+
+async fn push_events(
+    mut writer: MessageWriter,
+    mut events: broadcast::Receiver<Event>,
+    player: PlayerHandle,
+    protocol: Arc<AtomicU32>,
+) {
     let snapshot = |player: &PlayerHandle| {
-        [Event::State(Box::new(player.state())), Event::Queue { tracks: player.queue().to_vec() }]
+        // 先队列后状态：客户端拿到状态时，对应版本的队列已经到了。
+        [player.queue().to_event(), Event::State(Box::new(player.state()))]
     };
     for event in &snapshot(&player) {
         if writer.send(event).await.is_err() {
@@ -102,6 +121,9 @@ async fn push_events(mut writer: MessageWriter, mut events: broadcast::Receiver<
     loop {
         match events.recv().await {
             Ok(event) => {
+                if !understood_by(&event, protocol.load(Ordering::Relaxed)) {
+                    continue;
+                }
                 if writer.send(&event).await.is_err() || event == Event::Shutdown {
                     return;
                 }
@@ -139,4 +161,19 @@ async fn shutdown_signal(player: PlayerHandle) {
     let _ = tokio::signal::ctrl_c().await;
     player.send(Command::Shutdown);
     std::future::pending().await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_event_types_are_only_sent_to_clients_that_said_hello() {
+        let done = Event::Done { tag: 1, ok: true, message: String::new() };
+        let credential = Event::CredentialChanged { logged_in: true, musicid: 1 };
+        let queue = Event::Queue { tracks: Vec::new(), version: 1, ids: Vec::new() };
+        assert!(!understood_by(&done, 0) && !understood_by(&credential, 1));
+        assert!(understood_by(&done, 2) && understood_by(&credential, 2));
+        assert!(understood_by(&queue, 0) && understood_by(&Event::Shutdown, 0));
+    }
 }

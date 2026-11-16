@@ -55,6 +55,11 @@ impl Paths {
         self.root.join("daemon.log")
     }
 
+    /// 搜索历史。
+    pub fn search_history(&self) -> PathBuf {
+        self.root.join("search_history.json")
+    }
+
     /// 登录二维码图片保存目录。
     pub fn qrcode_dir(&self) -> PathBuf {
         self.root.join("qrcode")
