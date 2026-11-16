@@ -212,7 +212,7 @@ async fn live_auth_read_only() {
     soft.finish();
 }
 
-/// Create a playlist, add and remove a song, delete it.
+/// Create a playlist, add, reorder and remove songs, delete it.
 #[tokio::test]
 #[ignore = "requires network and QQMUSIC_CREDENTIAL"]
 async fn live_auth_songlist_roundtrip() {
@@ -224,10 +224,19 @@ async fn live_auth_songlist_roundtrip() {
     assert!(created.dirid > 0, "{created:?}");
 
     let result = async {
-        assert!(songlist.add_songs(created.dirid, &[(SONG_ID, 0)], 0, None).await?, "add_songs");
+        let added = [(SONG_ID, 0), (LYRIC_EXTRAS_SONG_ID, 0)];
+        assert!(songlist.add_songs(created.dirid, &added, created.id, None).await?, "add_songs");
         let detail = songlist.get_detail(created.id).await?;
         assert!(detail.songs.iter().any(|s| s.id == SONG_ID), "song not in playlist: {detail:?}");
-        assert!(songlist.del_songs(created.dirid, &[(SONG_ID, 0)], 0, None).await?, "del_songs");
+        let target: Vec<(i64, i64)> = detail.songs.iter().rev().map(|s| (s.id, s.r#type)).collect();
+        assert!(songlist.reorder_songs(created.dirid, &target, created.id, None).await?, "reorder_songs");
+        let after = songlist.get_detail(created.id).await?;
+        assert_eq!(
+            after.songs.iter().map(|s| s.id).collect::<Vec<_>>(),
+            target.iter().map(|(id, _)| *id).collect::<Vec<_>>(),
+            "order after reorder"
+        );
+        assert!(songlist.del_songs(created.dirid, &target, created.id, None).await?, "del_songs");
         Ok::<_, Error>(())
     }
     .await;
