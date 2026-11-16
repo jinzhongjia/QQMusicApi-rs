@@ -318,7 +318,7 @@ async fn search_types_keep_their_own_position_and_singers_can_be_opened() {
     h.key(KeyCode::Char('t'));
     h.settle().await;
     assert_eq!(h.app.stack.len(), depth, "切换类型不会越叠越深");
-    assert!(h.render(100, 30).contains("周杰伦  500 首 · 30 张专辑"), "{}", h.render(100, 30));
+    assert!(h.render(100, 30).contains("周杰伦 500 首 · 30 张专辑"), "{}", h.render(100, 30));
     h.key(KeyCode::Enter);
     h.settle().await;
     assert!(matches!(h.app.page().source, Source::Singer(ref mid) if mid == "s1"));
@@ -924,7 +924,7 @@ async fn lyric_states_are_distinct_and_the_lyric_view_can_seek() {
     let long = lyric::parse("[01:00.00]这是一句特别特别特别特别特别特别特别特别长的歌词结尾在这里", "");
     h.app.handle_msg(Msg::Lyric { mid: "m1".into(), result: Ok(long) });
     let screen = h.render(40, 16);
-    assert!(screen.contains("这是一句") && screen.contains("结尾在这里"), "{screen}");
+    assert!(screen.contains("这是一句") && screen.contains("长的歌词结尾在这"), "{screen}");
 }
 
 #[tokio::test]
@@ -974,12 +974,12 @@ async fn playbar_tells_paused_stopped_loading_and_buffering_apart() {
         h.player(Event::State(Box::new(state)));
         h.render(120, 30)
     };
-    assert!(show(&mut h, Status::Playing, Activity::Output).contains("▶ 播放中"));
-    assert!(show(&mut h, Status::Paused, Activity::Idle).contains("‖ 已暂停"));
+    assert!(show(&mut h, Status::Playing, Activity::Output).contains("♫ ♪ ♫ ♪ ♥"));
+    assert!(show(&mut h, Status::Paused, Activity::Idle).contains("_ z Z Z 已暂停 ♥"));
     assert!(show(&mut h, Status::Paused, Activity::Loading).contains("已暂停（加载中）"));
     assert!(show(&mut h, Status::Stopped, Activity::Idle).contains("■ 已停止"));
-    assert!(show(&mut h, Status::Loading, Activity::Loading).contains("… 加载中"));
-    assert!(show(&mut h, Status::Loading, Activity::Buffering).contains("… 缓冲中"));
+    assert!(show(&mut h, Status::Loading, Activity::Loading).contains("· · · · 加载中"));
+    assert!(show(&mut h, Status::Loading, Activity::Buffering).contains("· · · · 缓冲中"));
 
     // 缓冲 / 加载时进度不前进。
     let frozen = h.app.position_ms();
@@ -998,7 +998,7 @@ async fn playbar_tells_paused_stopped_loading_and_buffering_apart() {
     h.player(Event::State(Box::new(state)));
     let screen = h.render(120, 30);
     assert!(screen.contains("标准（期望无损，已降级）"), "{screen}");
-    assert!(screen.contains("01:01 / 04:29") && screen.contains("音量 80%") && screen.contains("列表循环"));
+    assert!(screen.contains("01:01/04:29") && screen.contains("[列表循环] 80%"), "{screen}");
 
     // 「接下来」与后台的播放计划一致；随机时不编造。
     assert!(screen.contains("接下来：歌曲 2"), "{screen}");
@@ -1008,70 +1008,47 @@ async fn playbar_tells_paused_stopped_loading_and_buffering_apart() {
 }
 
 #[tokio::test]
-async fn focus_moves_between_panes_and_keys_mean_the_same_at_every_width() {
-    let mut h = Harness::new();
-    search_server(&h.mock);
-    h.connect(5, Some(1), Status::Playing);
-    use super::app::{Focus, View};
-
-    // 宽屏：导航常驻，首页的主内容区是当前播放；焦点在导航。
-    h.render(140, 40);
-    assert_eq!((h.app.focus(), h.app.view()), (Focus::Nav, View::Nav));
-    let screen = h.render(140, 40);
-    assert!(screen.contains("▍导航") && screen.contains("当前播放"), "{screen}");
-
-    // 从导航打开页面后焦点进入内容区；Tab 依次经过内容 → 侧栏 → 导航。
-    for _ in 0..3 {
-        h.key(KeyCode::Char('j'));
-    }
-    h.key(KeyCode::Enter);
-    h.settle().await;
-    assert_eq!(h.app.page().source, Source::Guess);
-    assert_eq!(h.app.focus(), Focus::Content);
-    h.key(KeyCode::Tab);
-    assert_eq!((h.app.focus(), h.app.view()), (Focus::Side, View::Lyrics));
-    assert!(h.render(140, 40).contains("▍歌词"));
-    h.key(KeyCode::Char('w'));
-    assert_eq!(h.app.view(), View::Queue);
-    h.render(140, 40);
-    h.key(KeyCode::Tab);
-    assert_eq!(h.app.focus(), Focus::Nav);
-    h.key(KeyCode::BackTab);
-    assert_eq!(h.app.focus(), Focus::Side);
-
-    // 侧栏的队列和整页队列是同一套按键。
-    h.key(KeyCode::Char('j'));
-    h.key(KeyCode::Enter);
-    assert!(matches!(h.sent()[..], [Command::PlayIndex { index: 1, entry: Some(2) }]));
-
-    // 窗口变窄：侧栏和导航收起，焦点自动回到内容区，不会停在看不见的地方。
-    h.render(80, 24);
-    assert_eq!(h.app.focus(), Focus::Content);
-    // 关掉侧栏后宽屏也不再给它焦点。
-    h.keys("w");
-    h.render(140, 40);
-    h.key(KeyCode::Tab);
-    assert_ne!(h.app.focus(), Focus::Side);
-
-    // j / k / h / l 的含义不随宽度变化：始终是上下移动、返回、进入。
+async fn keys_mean_the_same_and_lists_use_the_available_height_at_every_width() {
+    // j / k / h 的含义不随宽度变化：始终是上下移动、返回。
     for (w, rows) in [(140u16, 40u16), (80, 24), (60, 20)] {
         let mut h = Harness::new();
         search_server(&h.mock);
         h.connect(5, Some(1), Status::Playing);
-        h.render(w, rows);
+        // 首页内容少：像菜单一样留白，不贴着顶部。
+        let home = h.render(w, rows);
+        let first = home.lines().position(|l| l.contains("首页")).unwrap();
+        assert!(first >= 2 && home.contains(" =>  1. 搜索"), "{w}x{rows}\n{home}");
+        if rows >= 30 {
+            assert!(first >= 6, "{w}x{rows}: 高窗口里菜单从约 1/3 处开始\n{home}");
+        }
         h.search("晴天").await;
         h.render(w, rows);
         h.keys("jjj");
         assert_eq!(h.app.page().selected, 3, "{w}x{rows}");
         h.key(KeyCode::Char('k'));
         assert_eq!(h.app.page().selected, 2, "{w}x{rows}");
-        // 翻页步长跟着可见行数走，而不是固定 10。
+        // 长列表上移并占满可用高度；翻页步长跟着可见行数走，而不是固定 10。
         let visible = h.app.viewport.get().rows;
-        assert!(visible > 4 && visible + 8 >= rows as usize - 4, "{w}x{rows}: {visible}");
+        assert!(visible >= 8 && visible + 12 >= rows as usize, "{w}x{rows}: {visible}");
         h.ctrl('d');
         assert_eq!(h.app.page().selected, (2 + visible).min(29), "{w}x{rows}");
         h.key(KeyCode::Char('h'));
         assert!(!matches!(h.app.page().source, Source::Search { .. }), "{w}x{rows}: h 返回");
+    }
+}
+
+#[tokio::test]
+async fn lyrics_show_below_the_list_and_follow_playback() {
+    let mut h = Harness::new();
+    h.connect(5, Some(0), Status::Playing);
+    let lines = lyric::parse("[00:50.00]故事的小黄花\n[01:00.00]从出生那年就飘着\n[01:10.00]童年的荡秋千", "");
+    h.app.handle_msg(Msg::Lyric { mid: "m1".into(), result: Ok(lines) });
+    for (w, rows) in [(120, 36), (80, 24), (60, 20)] {
+        let screen = h.render(w, rows);
+        let menu = screen.lines().position(|l| l.contains("1. 搜索")).unwrap();
+        let lyric = screen.lines().position(|l| l.contains("从出生那年就飘着")).unwrap();
+        let info = screen.lines().position(|l| l.contains("♫ ♪ ♫ ♪")).unwrap();
+        assert!(menu < lyric && lyric < info, "{w}x{rows}\n{screen}");
     }
 }
 
@@ -1086,7 +1063,7 @@ async fn core_flow(w: u16, rows: u16) -> String {
     // 中文长标题按显示宽度截断，不会把后面的列挤乱。
     assert!(screen.contains("…"), "{w}x{rows}\n{screen}");
     // 选中项与正在播放的标记不同，且都不只靠颜色。
-    assert!(screen.contains("› "), "{w}x{rows}\n{screen}");
+    assert!(screen.contains(" => "), "{w}x{rows}\n{screen}");
     assert!(screen.contains("周杰伦"), "{w}x{rows}: 歌手列保留\n{screen}");
     h.key(KeyCode::Char('j'));
     h.key(KeyCode::Enter);
@@ -1103,7 +1080,7 @@ async fn core_flow(w: u16, rows: u16) -> String {
     h.key(KeyCode::Char('j'));
     let screen = h.render(w, rows);
     let marked: Vec<&str> = screen.lines().filter(|l| l.contains("♪ ") && l.contains("第1页-1")).collect();
-    let selected: Vec<&str> = screen.lines().filter(|l| l.contains("› ") && l.contains("第1页-2")).collect();
+    let selected: Vec<&str> = screen.lines().filter(|l| l.contains(" => ") && l.contains("第1页-2")).collect();
     assert!(marked.len() == 1 && selected.len() == 1, "{w}x{rows}\n{screen}");
     // 帮助可以打开，并能滚到最后一项。
     h.key(KeyCode::Char('?'));
@@ -1157,7 +1134,7 @@ async fn tiny_terminals_never_panic() {
         all(&h);
         h.key(KeyCode::Esc);
     }
-    for key in ['c', 'L', 'w', 'w'] {
+    for key in ['c', 'L'] {
         h.key(KeyCode::Char(key));
         all(&h);
     }
@@ -1183,7 +1160,6 @@ async fn browsing_does_not_disturb_playback_and_quit_keys_keep_their_meaning() {
         h.key(KeyCode::Char(key));
     }
     h.key(KeyCode::Esc);
-    h.key(KeyCode::Tab);
     assert!(h.sent().is_empty(), "浏览不影响后台播放");
 
     // q：只退出界面；Q：退出并停止后台。
@@ -1199,7 +1175,7 @@ async fn browsing_does_not_disturb_playback_and_quit_keys_keep_their_meaning() {
     reopened.connect(5, Some(1), Status::Playing);
     assert_eq!(reopened.app.queue.len(), 5);
     let screen = reopened.render(120, 36);
-    assert!(screen.contains("▶ 播放中") && screen.contains("歌曲 2"), "{screen}");
+    assert!(screen.contains("♫ ♪ ♫ ♪") && screen.contains("歌曲 2"), "{screen}");
 }
 
 #[tokio::test]

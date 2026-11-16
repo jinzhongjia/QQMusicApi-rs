@@ -236,39 +236,18 @@ fn login_failure(e: &Error, kind: QrLoginType) -> String {
 
 pub const QUALITIES: [Quality; 3] = [Quality::Lossless, Quality::High, Quality::Standard];
 
-/// 焦点所在的区域。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Focus {
-    Nav,
-    Content,
-    Side,
-}
-
-/// 侧栏内容。
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Side {
-    Lyrics,
-    Queue,
-    Off,
-}
-
-/// 当前接收按键的视图。
+/// 当前接收按键的视图，由当前页面决定。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum View {
-    Nav,
     List,
     Queue,
     Lyrics,
 }
 
-/// 渲染时根据窗口大小算出的布局，按键处理据此决定焦点与翻页步长。
+/// 渲染时根据窗口大小算出的布局，按键处理据此决定翻页步长。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Viewport {
-    /// 左侧导航是否显示。
-    pub nav: bool,
-    /// 右侧栏是否显示。
-    pub side: bool,
-    /// 主内容区一屏的行数。
+    /// 列表一屏的行数。
     pub rows: usize,
 }
 
@@ -333,8 +312,6 @@ pub struct App {
     pub stack: Vec<Page>,
     next_id: u64,
     pub mode: Mode,
-    focus: Focus,
-    pub side: Side,
     pub state: PlayerState,
     state_at: Instant,
     pub queue: Vec<Track>,
@@ -383,7 +360,7 @@ impl App {
     pub fn new(paths: Paths, client: Client, tx: UnboundedSender<Msg>, commands: UnboundedSender<Command>) -> Self {
         let history = data::load_history(&paths);
         let mut app = Self {
-            viewport: Cell::new(Viewport { nav: false, side: false, rows: 10 }),
+            viewport: Cell::new(Viewport { rows: 10 }),
             paths,
             client,
             tx,
@@ -391,8 +368,6 @@ impl App {
             stack: Vec::new(),
             next_id: 0,
             mode: Mode::Normal,
-            focus: Focus::Content,
-            side: Side::Lyrics,
             state: PlayerState::default(),
             state_at: Instant::now(),
             queue: Vec::new(),
@@ -527,11 +502,6 @@ impl App {
         self.stack.last_mut().expect("page stack is never empty")
     }
 
-    /// 导航（首页菜单）页。
-    pub fn root(&self) -> &Page {
-        &self.stack[0]
-    }
-
     fn page_by_id(&mut self, id: u64, generation: u64) -> Option<&mut Page> {
         self.stack.iter_mut().chain(self.search_cache.iter_mut()).find(|p| p.id == id && p.generation == generation)
     }
@@ -541,49 +511,12 @@ impl App {
         self.next_id
     }
 
-    /// 实际生效的焦点：窗口变窄导致某个区域不显示时，焦点自动落到还在的区域。
-    pub fn focus(&self) -> Focus {
-        let viewport = self.viewport.get();
-        // 宽屏停在首页时主内容区只是「当前播放」，没有可操作的列表。
-        let content = !(viewport.nav && self.stack.len() == 1);
-        match self.focus {
-            Focus::Side if viewport.side => Focus::Side,
-            Focus::Nav if viewport.nav => Focus::Nav,
-            _ if content => Focus::Content,
-            _ => Focus::Nav,
-        }
-    }
-
     /// 当前接收按键的视图。
     pub fn view(&self) -> View {
-        match self.focus() {
-            Focus::Nav => View::Nav,
-            Focus::Side if self.side == Side::Queue => View::Queue,
-            Focus::Side => View::Lyrics,
-            Focus::Content => match self.page().source {
-                Source::Queue => View::Queue,
-                Source::Lyrics => View::Lyrics,
-                _ => View::List,
-            },
-        }
-    }
-
-    fn cycle_focus(&mut self, forward: bool) {
-        let viewport = self.viewport.get();
-        let mut order = Vec::new();
-        if viewport.nav {
-            order.push(Focus::Nav);
-        }
-        if !(viewport.nav && self.stack.len() == 1) {
-            order.push(Focus::Content);
-        }
-        if viewport.side {
-            order.push(Focus::Side);
-        }
-        let at = order.iter().position(|f| *f == self.focus()).unwrap_or(0);
-        let next = if forward { at + 1 } else { at + order.len() - 1 } % order.len().max(1);
-        if let Some(focus) = order.get(next) {
-            self.focus = *focus;
+        match self.page().source {
+            Source::Queue => View::Queue,
+            Source::Lyrics => View::Lyrics,
+            _ => View::List,
         }
     }
 
@@ -660,7 +593,6 @@ impl App {
             recommendation: None,
         };
         self.stack.push(page);
-        self.focus = Focus::Content;
         self.reload();
     }
 
@@ -1413,6 +1345,7 @@ impl App {
     fn activate(&mut self) {
         let Some(item) = self.selected_item().cloned() else { return };
         match item {
+            Item::Link { source: Source::Queue, .. } => self.open_queue(),
             Item::Link { title, source, .. } => self.push_child(&title, source),
             Item::Song(_) => self.play_replace(),
             Item::Action { action, .. } => self.run_action(action),
@@ -1429,27 +1362,8 @@ impl App {
         }
     }
 
-    /// 在导航里选中一项：换掉主内容区的整个页面栈。
-    fn activate_nav(&mut self) {
-        let root = &self.stack[0];
-        let Some(item) = root.items.get(root.selected).cloned() else { return };
-        match item {
-            Item::Link { title, source, .. } => {
-                self.stack.truncate(1);
-                if source == Source::Queue {
-                    self.queue_sel = self.state.index.unwrap_or(0);
-                }
-                self.push(title, source);
-            }
-            Item::Action { action, .. } => self.run_action(action),
-            _ => {}
-        }
-    }
-
     fn back(&mut self) {
-        if self.focus() == Focus::Side {
-            self.focus = Focus::Content;
-        } else if self.stack.len() > 1 {
+        if self.stack.len() > 1 {
             self.stack.pop();
         }
     }
@@ -1459,14 +1373,12 @@ impl App {
         if self.page().source != Source::Queue {
             self.push("播放队列".into(), Source::Queue);
         }
-        self.focus = Focus::Content;
     }
 
     fn open_lyrics(&mut self) {
         if self.page().source != Source::Lyrics {
             self.push("当前播放".into(), Source::Lyrics);
         }
-        self.focus = Focus::Content;
     }
 
     fn remove_from_queue(&mut self, index: usize) {
@@ -1582,7 +1494,6 @@ impl App {
             Some(at) => {
                 let page = self.search_cache.remove(at);
                 self.stack.push(page);
-                self.focus = Focus::Content;
                 self.maybe_load_more();
             }
             None => self.push(format!("搜索「{keyword}」"), source),
@@ -1725,8 +1636,6 @@ impl App {
         match key.code {
             KeyCode::Char('q') => self.quit = Some(false),
             KeyCode::Char('Q') => self.quit = Some(true),
-            KeyCode::Tab => self.cycle_focus(true),
-            KeyCode::BackTab => self.cycle_focus(false),
             KeyCode::Char(' ') => {
                 self.send(Command::Toggle);
             }
@@ -1767,13 +1676,6 @@ impl App {
             KeyCode::Char('t') if ctrl => self.switch_search_kind(),
             KeyCode::Char('f') => self.toggle_like(self.state.track.clone()),
             KeyCode::Char('L') => self.open_lyrics(),
-            KeyCode::Char('w') => {
-                self.side = match self.side {
-                    Side::Lyrics => Side::Queue,
-                    Side::Queue => Side::Off,
-                    Side::Off => Side::Lyrics,
-                };
-            }
             KeyCode::Char('e') => {
                 self.unread = 0;
                 self.mode = Mode::Notices { scroll: usize::MAX / 2 };
@@ -1784,7 +1686,6 @@ impl App {
             }
             KeyCode::Char('?') => self.mode = Mode::Help { scroll: 0 },
             _ => match self.view() {
-                View::Nav => self.handle_nav_key(key),
                 View::List => self.handle_list_key(key),
                 View::Queue => self.handle_queue_key(key),
                 View::Lyrics => self.handle_lyric_key(key),
@@ -1807,18 +1708,6 @@ impl App {
             KeyCode::End | KeyCode::Char('G') => isize::MAX / 2,
             _ => return None,
         })
-    }
-
-    fn handle_nav_key(&mut self, key: KeyEvent) {
-        if let Some(delta) = self.motion(key) {
-            move_selection(&mut self.stack[0], delta);
-            return;
-        }
-        match key.code {
-            KeyCode::Enter | KeyCode::Char('n' | 'l') | KeyCode::Right => self.activate_nav(),
-            KeyCode::Char('c') => self.open_queue(),
-            _ => {}
-        }
     }
 
     fn handle_list_key(&mut self, key: KeyEvent) {

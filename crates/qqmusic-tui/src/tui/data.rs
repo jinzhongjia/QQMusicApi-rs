@@ -160,7 +160,7 @@ fn link(title: impl Into<String>, sub: impl Into<String>, source: Source) -> Ite
     Item::Link { title: title.into(), sub: sub.into(), source }
 }
 
-/// 主菜单（宽屏时即左侧导航）。
+/// 主菜单。
 pub fn root_items() -> Vec<Item> {
     vec![
         Item::Action { title: "搜索".into(), action: Action::Search },
@@ -186,7 +186,6 @@ pub const HELP: &[(&str, &str)] = &[
     ("Enter / n", "进入；在歌曲上：播放并替换队列"),
     ("l / →", "进入；在歌曲上：打开操作菜单"),
     ("h / ← / b / Esc", "返回上一级"),
-    ("Tab / Shift+Tab", "切换焦点：导航 / 内容 / 侧栏"),
     ("r", "刷新当前页；加载更多失败时重试"),
     ("", "搜索"),
     ("/", "搜索（↑ ↓ 选择补全或历史，Enter 确认）"),
@@ -217,7 +216,6 @@ pub const HELP: &[(&str, &str)] = &[
     ("t", "歌词视图：显示 / 隐藏翻译"),
     ("r", "歌词视图：重新加载歌词"),
     ("", "其他"),
-    ("w", "侧栏：歌词 / 队列 / 关闭"),
     ("e", "通知与错误列表"),
     ("x", "关闭底部的错误提示"),
     ("?", "帮助（j / k 滚动）"),
