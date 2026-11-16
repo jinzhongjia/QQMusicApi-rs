@@ -439,10 +439,13 @@ impl<T: FromJson + Send + 'static> Paged<T> {
         Pager { next: Some(self.request), strategy: self.strategy, limit, yielded: 0 }
     }
 
-    /// Stream of pages.
+    /// Stream of pages; ends after the first error.
     pub fn stream(self, limit: Option<usize>) -> BoxStream<'static, Result<T>> {
-        futures::stream::unfold(self.pager(limit), |mut pager| async move {
-            pager.next_page().await.map(|page| (page, pager))
+        futures::stream::unfold(Some(self.pager(limit)), |pager| async move {
+            let mut pager = pager?;
+            let page = pager.next_page().await?;
+            let rest = page.is_ok().then_some(pager);
+            Some((page, rest))
         })
         .boxed()
     }
@@ -516,6 +519,8 @@ impl<T: FromJson + Send + 'static> Pager<T> {
     }
 
     /// Fetch the next page.
+    ///
+    /// A failed request is kept, so calling this again retries the same page.
     pub async fn next_page(&mut self) -> Option<Result<T>> {
         if !self.has_more() {
             return None;
@@ -525,7 +530,10 @@ impl<T: FromJson + Send + 'static> Pager<T> {
         let template = request.clone();
         let response = match request.send().await {
             Ok(response) => response,
-            Err(err) => return Some(Err(err)),
+            Err(err) => {
+                self.next = Some(template);
+                return Some(Err(err));
+            }
         };
         self.yielded += 1;
         match self.strategy.next_params(&params, &response) {

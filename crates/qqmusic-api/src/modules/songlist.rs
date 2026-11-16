@@ -14,6 +14,24 @@ pub const LIKE_DIRID: i64 = 201;
 /// Error code returned when the songs are already (not) in the playlist.
 const NOOP_CODE: i64 = 80092;
 
+/// Outcome of a playlist write ([`SonglistApi::add_songs_outcome`], [`SonglistApi::del_songs_outcome`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SonglistWrite {
+    /// The playlist was modified.
+    Changed,
+    /// Nothing to do: the songs already are (not) in the playlist.
+    Unchanged,
+    /// The server answered with this non-zero `retCode`; the playlist state is unknown.
+    Rejected(i64),
+}
+
+impl SonglistWrite {
+    /// Whether the playlist is now known to be in the requested state.
+    pub fn is_confirmed(self) -> bool {
+        !matches!(self, Self::Rejected(_))
+    }
+}
+
 /// Options of [`SonglistApi::get_detail_with`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SonglistDetailOptions {
@@ -121,11 +139,22 @@ impl SonglistApi {
         tid: i64,
         credential: Option<Credential>,
     ) -> Result<bool> {
+        Ok(self.add_songs_outcome(dirid, songs, tid, credential).await? == SonglistWrite::Changed)
+    }
+
+    /// Like [`Self::add_songs`], telling "already there" apart from a rejected write.
+    pub async fn add_songs_outcome(
+        &self,
+        dirid: i64,
+        songs: &[(i64, i64)],
+        tid: i64,
+        credential: Option<Credential>,
+    ) -> Result<SonglistWrite> {
         let request = self
             .cgi::<Value>("music.musicasset.PlaylistDetailWrite", "AddSonglist", oper_param(dirid, songs, tid))
             .require_login(true)
             .preserve_bool(true);
-        ret_code_ok(request.credential_opt(credential).send().await)
+        write_outcome(request.credential_opt(credential).send().await)
     }
 
     /// Remove `(song_id, song_type)` pairs, `song_type` being the `Song.type` of
@@ -137,10 +166,21 @@ impl SonglistApi {
         tid: i64,
         credential: Option<Credential>,
     ) -> Result<bool> {
+        Ok(self.del_songs_outcome(dirid, songs, tid, credential).await? == SonglistWrite::Changed)
+    }
+
+    /// Like [`Self::del_songs`], telling "not there" apart from a rejected write.
+    pub async fn del_songs_outcome(
+        &self,
+        dirid: i64,
+        songs: &[(i64, i64)],
+        tid: i64,
+        credential: Option<Credential>,
+    ) -> Result<SonglistWrite> {
         let request = self
             .cgi::<Value>("music.musicasset.PlaylistDetailWrite", "DelSonglist", oper_param(dirid, songs, tid))
             .require_login(true);
-        ret_code_ok(request.credential_opt(credential).send().await)
+        write_outcome(request.credential_opt(credential).send().await)
     }
 
     /// Reorder the playlist to the given `(song_id, song_type)` order.
@@ -179,10 +219,13 @@ impl SonglistApi {
     }
 }
 
-fn ret_code_ok(result: Result<Value>) -> Result<bool> {
+fn write_outcome(result: Result<Value>) -> Result<SonglistWrite> {
     match result {
-        Ok(data) => Ok(data.get("retCode").and_then(Value::as_i64) == Some(0)),
-        Err(err) if err.code() == Some(NOOP_CODE) => Ok(false),
+        Ok(data) => Ok(match data.get("retCode").and_then(Value::as_i64) {
+            Some(0) => SonglistWrite::Changed,
+            code => SonglistWrite::Rejected(code.unwrap_or(-1)),
+        }),
+        Err(err) if err.code() == Some(NOOP_CODE) => Ok(SonglistWrite::Unchanged),
         Err(err) => Err(err),
     }
 }
@@ -216,6 +259,23 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn failed_page_can_be_retried() {
+        let (client, mock) = mock_client();
+        push_cgi(&mock, json!({"hasmore": 1, "total_song_num": 2, "songlist": [{"id": 1, "mid": "a"}]}));
+        let options = SonglistDetailOptions { num: 1, ..SonglistDetailOptions::default() };
+        let mut pager = client.songlist().get_detail_with(7, options).pager(None);
+        assert_eq!(pager.next_page().await.unwrap().unwrap().songs.len(), 1);
+        mock.push_response(crate::transport::Response::new(500, "boom"));
+        assert!(pager.next_page().await.unwrap().is_err());
+        assert!(pager.has_more());
+        push_cgi(&mock, json!({"hasmore": 0, "total_song_num": 2, "songlist": [{"id": 2, "mid": "b"}]}));
+        let page = pager.next_page().await.unwrap().unwrap();
+        assert_eq!(page.songs[0].id, 2);
+        assert_eq!(last_req0(&mock)["param"]["song_begin"], 1);
+        assert!(pager.next_page().await.is_none());
+    }
+
+    #[tokio::test]
     async fn create_delete_and_songs() {
         let (client, mock) = logged_in_client();
         push_cgi(&mock, json!({"retCode": 0, "result": {"tid": 9, "dirId": 3, "dirName": "x"}}));
@@ -239,6 +299,19 @@ mod tests {
 
         push_cgi(&mock, json!({"retCode": 3}));
         assert!(!client.songlist().add_songs(5, &[(1, 0)], 0, None).await.unwrap());
+
+        // The outcome variants tell the three `Ok` cases apart.
+        let songlist = client.songlist();
+        push_cgi(&mock, json!({"retCode": 0}));
+        assert_eq!(songlist.add_songs_outcome(5, &[(1, 0)], 0, None).await.unwrap(), SonglistWrite::Changed);
+        push_cgi_code(&mock, NOOP_CODE, json!({}));
+        let unchanged = songlist.del_songs_outcome(5, &[(1, 0)], 0, None).await.unwrap();
+        assert_eq!(unchanged, SonglistWrite::Unchanged);
+        assert!(unchanged.is_confirmed());
+        push_cgi(&mock, json!({"retCode": 3}));
+        let rejected = songlist.add_songs_outcome(5, &[(1, 0)], 0, None).await.unwrap();
+        assert_eq!(rejected, SonglistWrite::Rejected(3));
+        assert!(!rejected.is_confirmed());
         push_cgi_code(&mock, 2000, json!({}));
         assert!(client.songlist().del_songs(5, &[(1, 0)], 0, None).await.is_err());
     }
