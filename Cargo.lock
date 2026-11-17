@@ -2782,6 +2782,7 @@ dependencies = [
 name = "qqmusic-tui"
 version = "0.0.5"
 dependencies = [
+ "async-trait",
  "crossterm",
  "dirs",
  "dispatch",
@@ -2799,6 +2800,7 @@ dependencies = [
  "souvlaki",
  "tempfile",
  "tokio",
+ "unicode-width",
  "windows-sys 0.61.2",
 ]
 

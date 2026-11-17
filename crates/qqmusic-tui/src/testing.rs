@@ -24,6 +24,7 @@ pub(crate) fn reply(data: Value) -> Response {
     Response::json(&json!({"code": 0, "req_0": {"code": 0, "data": data}}))
 }
 
+#[cfg_attr(not(feature = "player"), allow(dead_code))]
 pub(crate) fn track(mid: &str) -> Track {
     Track {
         id: 1,
@@ -36,5 +37,7 @@ pub(crate) fn track(mid: &str) -> Track {
         cover: String::new(),
         duration: 180,
         vip: false,
+        album_mid: String::new(),
+        singer_list: Vec::new(),
     }
 }
